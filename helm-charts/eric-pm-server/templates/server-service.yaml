@@ -1,0 +1,35 @@
+{{- $g := fromJson (include "eric-pm-server.global" .) -}}
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    {{- $serverSVCAnn := .Values.server.service.annotations -}}
+    {{- $commonAnn := include "eric-pm-server.annotations" . | fromYaml -}}
+    {{- include "eric-pm-server.mergeAnnotations" (dict "location" .Template.Name "sources" (list $serverSVCAnn $commonAnn)) | trim | nindent 4 }}
+  labels:
+    {{- $serverSVCLabels := .Values.server.service.labels -}}
+    {{- $commonLabels := include "eric-pm-server.labels" . | fromYaml -}}
+    {{- include "eric-pm-server.mergeLabels" (dict "location" .Template.Name "sources" (list $serverSVCLabels $commonLabels)) | trim | nindent 4 }}
+  name: {{ template "eric-pm-server.name" . }}
+spec:
+{{- if $g.internalIPFamily }}
+  ipFamilies: [{{ $g.internalIPFamily | quote }}]  # ipFamilies was introduced in K8s v1.20
+{{- end }}
+  ports:
+    {{- if or (and $g.security.tls.enabled (eq .Values.service.endpoints.reverseproxy.tls.enforced "optional")) (not $g.security.tls.enabled) }}
+    - name: http-pm
+      protocol: TCP
+      port: {{ .Values.server.service.httpPort }}
+      targetPort: http-pm
+    {{- end }}
+    {{- if $g.security.tls.enabled }}
+    - name: https-rproxy-pm
+      protocol: TCP
+      port: {{ .Values.server.service.httpsPort }}
+      targetPort: https-rproxy-pm
+    {{- end }}
+  selector:
+    app: {{ template "eric-pm-server.name" . }}
+    component: {{ .Values.server.name | quote }}
+    release: {{ .Release.Name }}
+  type: ClusterIP

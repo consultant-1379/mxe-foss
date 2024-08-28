@@ -1,0 +1,76 @@
+{{- $global := fromJson (include "eric-data-object-storage-mn.global" .) -}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "eric-data-object-storage-mn.fullname" . }}
+  labels: {{- include "eric-data-object-storage-mn.labels" . | nindent 4 }}
+  annotations: {{- include "eric-data-object-storage-mn.metrics-annotations" . | nindent 4 }}
+spec:
+  {{- include "eric-data-object-storage-mn.IPFamily" . | nindent 2}}
+  type: {{ .Values.service.type | quote }}
+  selector:
+    app.kubernetes.io/name: {{ template "eric-data-object-storage-mn.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app: {{ template "eric-data-object-storage-mn.name" . }}
+  ports:
+    {{- if $global.security.tls.enabled }}
+    - name: service-tls
+      port: {{ .Values.service.port }}
+      protocol: TCP
+      targetPort: 9000
+    {{- else }}
+    - name: service
+      port: {{ .Values.service.port }}
+      protocol: TCP
+      targetPort: 9000
+    {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "eric-data-object-storage-mn.fullname" . }}-svc
+  labels: {{- include "eric-data-object-storage-mn.labels" . | nindent 4 }}
+  annotations: {{- include "eric-data-object-storage-mn.metrics-annotations" . | nindent 4 }}
+spec:
+  {{- include "eric-data-object-storage-mn.IPFamily" . | nindent 2}}
+  publishNotReadyAddresses: true
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: {{ template "eric-data-object-storage-mn.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app: {{ template "eric-data-object-storage-mn.name" . }}
+  ports:
+    {{- if $global.security.tls.enabled }}
+    - name: service-tls
+      port: {{ .Values.service.port }}
+      protocol: TCP
+    {{- else }}
+    - name: service
+      port: {{ .Values.service.port }}
+      protocol: TCP
+    {{- end }}
+---
+{{- if .Values.brAgent.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "eric-data-object-storage-mn.fullname" . }}-bra
+  labels: {{- include "eric-data-object-storage-mn.labels" . | nindent 4 }}
+  annotations: {{- include "eric-data-object-storage-mn.metrics-annotations" . | nindent 4 }}
+spec:
+  {{- include "eric-data-object-storage-mn.IPFamily" . | nindent 2}}
+  type: ClusterIP
+  ports:
+    {{- if $global.security.tls.enabled }}
+    - name: service-tls
+      port: 3000
+      protocol: TCP
+    {{- else }}
+    - name: service
+      port: 3000
+      protocol: TCP
+    {{- end }}
+  selector:
+    app: {{ template "eric-data-object-storage-mn.name" . }}-mgt
+{{- end }}

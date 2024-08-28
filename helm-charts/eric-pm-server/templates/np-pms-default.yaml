@@ -1,0 +1,25 @@
+{{- $g := fromJson (include "eric-pm-server.global" .) -}}
+{{- if and $g.networkPolicy .Values.networkPolicy -}}
+{{- if and $g.networkPolicy.enabled .Values.networkPolicy.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ template "eric-pm-server.name" . }}-default-access
+  labels: {{ include "eric-pm-server.labels" . | nindent 4 }}
+  annotations: {{ include "eric-pm-server.annotations" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ template "eric-pm-server.name" . }}
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+           {{ template "eric-pm-server.name" . }}-access: "true"
+    ports:
+    - port: {{ include "eric-pm-server.metrics-port" . }}
+      protocol: TCP
+{{- end }}
+{{- end }}

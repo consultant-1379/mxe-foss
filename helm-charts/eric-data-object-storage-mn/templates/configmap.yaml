@@ -1,0 +1,55 @@
+{{- $global := fromJson (include "eric-data-object-storage-mn.global" .) -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "eric-data-object-storage-mn.fullname" . }}-kms-config
+  labels: {{- include "eric-data-object-storage-mn.labels" . | nindent 4 }}
+  annotations: {{- include "eric-data-object-storage-mn.annotations" . | nindent 4 }}
+data:
+  config.json: |
+    {
+      "kms": {
+        "dns": {{ .Values.keyManagement.hostname | quote }},
+        "port": {{ .Values.keyManagement.port | quote }},
+        "namespace": {{ .Release.Namespace | quote }},
+        "root_token_secret": {{ .Values.keyManagement.tokenSecretName | quote }},
+        "root_token_key": {{ .Values.keyManagement.tokenKey | quote }},
+        "credentials_service_account_name": {{ .Values.keyManagement.serviceAccountNameForCredentials | quote }},
+        "credentials_role_name": "service-credentials",
+        "kv_secret_path": "secret-v2"
+      },
+      "siptls": {
+        "ca_secret": {{ .Values.keyManagement.tls.caSecret | quote }},
+        "ca_cert_key": {{ .Values.keyManagement.tls.caCert | quote }},
+        "namespace": {{ .Release.Namespace | quote }}
+      },
+      "obj_storage": {
+        "tls_enable": {{ $global.security.tls.enabled }},
+        "data_encryption": {{ and .Values.autoEncryption.enabled $global.security.tls.enabled }},
+        "config_kms_secret": {{ .Values.autoEncryption.kmsConfigSecret | quote }},
+        "role_key": "role_id",
+        "secret_key": "secret_id",
+        "auth_path": "approle",
+        "role_name": "my-role",
+        "policy_name": "minio-policy",
+        "transit_name": "my-minio-key",
+        "transit_path": "transit",
+        "credentials_service_account_name": {{ include "eric-data-object-storage-mn.serviceAccountName" . | quote }},
+        "namespace": {{ .Release.Namespace | quote }}
+      }
+    }
+
+---
+
+{{- if ne .Values.objects_lifecycle_cfg "" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "eric-data-object-storage-mn.fullname" . }}-{{ .Values.lifecycle.configMap }}
+  labels: {{- include "eric-data-object-storage-mn.labels" . | nindent 4 }}
+  annotations: {{- include "eric-data-object-storage-mn.annotations" . | nindent 4 }}
+data:
+  lifecycle-config.cfg: |
+{{ .Values.objects_lifecycle_cfg | indent 4 }}
+{{- end }}
+

@@ -1,0 +1,38 @@
+productName: PM Server HELM
+productNumber: CXC 201 1513
+images:
+  eric-pm-initcontainer:
+    productName: PM Server InitContainer IMAGE
+    productNumber: CXU 101 1467
+    registry: armdocker.rnd.ericsson.se
+    repoPath: 'proj-common-assets-cd/monitoring/pm'
+    name: eric-pm-initcontainer
+    tag: '10.5.0-45'
+  eric-pm-server:
+    productName: PM Server IMAGE
+    productNumber: CXC 201 1377
+    registry: armdocker.rnd.ericsson.se
+    repoPath: 'proj-common-assets-cd/monitoring/pm'
+    name: eric-pm-server
+    tag: '10.5.0-45'
+  eric-pm-configmap-reload:
+    productName: PM Server ConfigmapReload IMAGE
+    productNumber: CXC 201 1783
+    registry: armdocker.rnd.ericsson.se
+    repoPath: 'proj-common-assets-cd/monitoring/pm'
+    name: eric-pm-configmap-reload
+    tag: '10.5.0-45'
+  eric-pm-exporter:
+    productName: PM Server PmExporter IMAGE
+    productNumber: CXC 174 3401
+    registry: armdocker.rnd.ericsson.se
+    repoPath: 'proj-common-assets-cd/monitoring/pm'
+    name: eric-pm-exporter
+    tag: '10.5.0-45'
+  eric-pm-reverseproxy:
+    productName: PM Server ReverseProxy IMAGE
+    productNumber: CXC 201 2773
+    registry: armdocker.rnd.ericsson.se
+    repoPath: 'proj-common-assets-cd/monitoring/pm'
+    name: eric-pm-reverseproxy
+    tag: '10.5.0-45'

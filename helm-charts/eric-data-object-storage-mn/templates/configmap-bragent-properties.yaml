@@ -1,0 +1,37 @@
+{{- $global := fromJson (include "eric-data-object-storage-mn.global" .) -}}
+{{- if .Values.brAgent.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "eric-data-object-storage-mn.fullname" . }}-bragent-properties
+  labels: {{- include "eric-data-object-storage-mn.labels" . | nindent 4 }}
+  annotations: {{- include "eric-data-object-storage-mn.annotations" . | nindent 4 }}
+data:
+  application.properties: |
+    orchestrator.host = {{ $global.serviceNames.ctrl.bro }}
+    orchestrator.port = {{ $global.servicePorts.ctrl.bro }}
+    agent.id = {{ .Values.brAgent.brLabelValue }}
+    agent.apiVersion = 3.0.3
+    {{- if .Values.brAgent.backupTypeList }}
+    agent.scope = {{- template "eric-data-object-storage-mn.backupTypes" . }}
+    {{- end }}
+    agent.softwareVersion.description = {{ template "eric-data-object-storage-mn.fullname" . }} Agent for backup and restore.
+    agent.softwareVersion.productionDate = {{ .Values.brAgent.properties.production_date }}
+    agent.softwareVersion.productName = Object Storage BR Agent
+    agent.softwareVersion.productNumber = CXU 101 0224/1
+    agent.softwareVersion.type = Object Storage
+    agent.softwareVersion.revision = 1.0.0
+    agent.fragment.backup.data.path = {{ .Values.brAgent.properties.backup_data_path }}
+    agent.objstorage.service.host = {{ .Values.brAgent.objectStorage.host | default "eric-data-object-storage-mn" }}
+    agent.objstorage.service.port = {{ .Values.brAgent.objectStorage.port | default 9000 }}
+    {{- if $global.security.tls.enabled }}
+    flag.grpc.siptls.security.enabled = true
+    siptls.ca.name = {{ $global.serviceNames.ctrl.bro }}
+    siptls.ca.path = {{ .Values.brAgent.tls.paths.internalCa }}/cacertbundle.pem
+    {{- if .Values.brAgent.tls.paths.clientCerts }}
+    siptls.client.certificateChainFilePath = {{ .Values.brAgent.tls.paths.clientCerts }}/cert.pem
+    siptls.client.privateKeyFilePath = {{ .Values.brAgent.tls.paths.clientCerts }}/key.pem
+    {{- end }}
+    {{- end }}
+{{- end }}
+

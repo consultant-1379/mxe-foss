@@ -1,0 +1,28 @@
+{{/*
+ClientCertificate Resource declaration file for TLS between logshipper and logtransformer
+*/}}
+{{- $default := fromJson (include "eric-data-object-storage-mn.logshipper-default-value" .) -}}
+{{- $g := fromJson (include "eric-data-object-storage-mn.logshipper-global" .) -}}
+{{- if $g.security.tls.enabled -}}
+apiVersion: "siptls.sec.ericsson.com/v1"
+kind: "InternalCertificate"
+metadata:
+  name: "{{ include "eric-data-object-storage-mn.logshipper-service-fullname" . }}-lt-client-cert"
+  labels:
+    {{- include "eric-data-object-storage-mn.logshipper-labels" . | nindent 4 }}
+  annotations:
+    {{- include "eric-data-object-storage-mn.logshipper-annotations" . | nindent 4 }}
+spec:
+  kubernetes:
+    generatedSecretName: "{{ include "eric-data-object-storage-mn.logshipper-service-fullname" . }}-lt-client-cert"
+    certificateName: "clicert.pem"
+    privateKeyName: "cliprivkey.pem"
+  certificate:
+    subject:
+      cn: {{ include "eric-data-object-storage-mn.logshipper-service-fullname" . | quote }}
+    issuer:
+      reference: "{{ $default.logshipper.logtransformer.host }}-input-ca-cert"
+    extendedKeyUsage:
+      tlsClientAuth: true
+      tlsServerAuth: false
+{{- end -}}

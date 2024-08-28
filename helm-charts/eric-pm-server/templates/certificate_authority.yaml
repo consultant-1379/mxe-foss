@@ -1,0 +1,29 @@
+{{- $g := fromJson (include "eric-pm-server.global" .) -}}
+{{- if $g.security.tls.enabled }}
+apiVersion: siptls.sec.ericsson.com/v1
+kind: InternalUserCA
+metadata:
+  name: {{ template "eric-pm-server.name" . }}-ca
+  annotations: {{- include "eric-pm-server.annotations" . | nindent 4 }}
+  labels: {{- include "eric-pm-server.labels" . | nindent 4 }}
+spec:
+
+  kubernetes:
+    ## Mandatory; string.
+    ## The secret where the CA certificate is stored.
+    ## The same secret should not be used for multiple purposes, as SIP-TLS
+    ## overwrites the content periodically.
+    generatedSecretName: {{ template "eric-pm-server.name" . }}-ca
+
+    ## Optional; string.
+    ## The key name of the CA certificate bundle in the secret.
+    ## If not given, 'ca.pem' is used.
+    certificateName: 'client-cacertbundle.pem'
+
+  certificate:
+    subject:
+      ## Mandatory; string.
+      ## The Subject Common Name (CN) of the CA certificate.
+      cn: "{{ template "eric-pm-server.name" . }} Internal Client CA"
+
+{{- end }}

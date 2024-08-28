@@ -1,0 +1,31 @@
+productName: "Object Storage MN"
+productNumber: "CXC 174 2822"
+images:
+  osmn:
+    productName: "Object Storage MN"
+    productNumber: "CXC 174 2823"
+    registry: "armdocker.rnd.ericsson.se"
+    repoPath: proj-adp-eric-data-object-storage-mn-drop
+    name: eric-data-object-storage-mn
+    tag: 1.26.0-24
+  init:
+    productName: "Object Storage MN Init container"
+    productNumber: "CXC 174 2824"
+    registry: "armdocker.rnd.ericsson.se"
+    repoPath: proj-adp-eric-data-object-storage-mn-drop
+    name: eric-data-object-storage-mn-init
+    tag: 1.26.0-24
+  bra:
+    productName: "Object Storage MN brAgent"
+    productNumber: "CXU 101 0224"
+    registry: "armdocker.rnd.ericsson.se"
+    repoPath: proj-adp-eric-data-object-storage-mn-drop
+    name: eric-data-object-storage-bra
+    tag: 1.26.0-24
+  logshipper:
+    productName: "Log Shipper IMAGE"
+    productNumber: "CXU 101 0642"
+    registry: "armdocker.rnd.ericsson.se"
+    repoPath: proj-adp-log-released
+    name: eric-log-shipper
+    tag: 10.1.0-13

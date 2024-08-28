@@ -1,0 +1,224 @@
+{{ if (empty .Values.server.configMapOverrideName) }}
+{{- $g := fromJson (include "eric-pm-server.global" .) -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  annotations: {{- include "eric-pm-server.annotations" . | nindent 4 }}
+  labels: {{- include "eric-pm-server.labels" . | nindent 4 }}
+  name: {{ template "eric-pm-server.name" . }}
+data:
+  {{- if and .Values.rbac.appMonitoring.configFileCreate ( .Values.rbac.appMonitoring.enabled) }}
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      scrape_timeout: 10s
+      evaluation_interval: 1m
+    {{- if and .Values.config.recording_rules (not .Values.server.extraConfigmapMounts) }}
+    rule_files:
+      - "/etc/config/recording_rules.yml"
+    {{ else }}
+    rule_files:
+      {{- range .Values.server.extraConfigmapMounts }}
+      - {{ printf  "%s/%s.yml" .mountPath .configMap | quote -}}
+      {{- end -}}
+    {{- end -}}
+    {{- if .Values.config.remote_write }}
+    remote_write:
+{{ tpl (toYaml .Values.config.remote_write | indent 6) . }}
+    {{- end }}
+    scrape_configs:
+      - job_name: prometheus
+        static_configs:
+          - targets:
+            - localhost:9090
+      - job_name: configmap-reload
+        static_configs:
+          - targets:
+            - localhost:9085
+      - job_name: pm-exporter
+        static_configs:
+          - targets:
+            - localhost:9087
+      {{- if $g.security.tls.enabled }}
+        scheme: https
+        tls_config:
+          ca_file: /run/secrets/cacert/cacertbundle.pem
+          cert_file: /run/secrets/clicert/clicert.pem
+          key_file: /run/secrets/clicert/cliprivkey.pem
+          server_name: certified-scrape-target
+      - job_name: reverse-proxy
+        static_configs:
+          - targets:
+            - localhost:9088
+      - job_name: tls-targets
+        scheme: https
+        tls_config:
+          ca_file: /run/secrets/cacert/cacertbundle.pem
+          cert_file: /run/secrets/clicert/clicert.pem
+          key_file: /run/secrets/clicert/cliprivkey.pem
+          server_name: certified-scrape-target
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - {{ .Release.Namespace }}
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            action: replace
+            target_label: job
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: keep
+            regex: (.*-tls)
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scheme]
+            action: replace
+            target_label: __scheme__
+            regex: (https?)
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+            action: replace
+            target_label: __address__
+            regex: ((?:\[.+\])|(?:.+))(?::\d+);(\d+)
+            replacement: $1:$2
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_service_name]
+            action: replace
+            target_label: kubernetes_name
+      - job_name: 'tls-pod-targets'
+        scheme: https
+        tls_config:
+          ca_file: /run/secrets/cacert/cacertbundle.pem
+          cert_file: /run/secrets/clicert/clicert.pem
+          key_file: /run/secrets/clicert/cliprivkey.pem
+          server_name: certified-scrape-target
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - {{ .Release.Namespace }}
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_container_port_name]
+            action: keep
+            regex: (.*-tls)
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ((?:\[.+\])|(?:.+))(?::\d+);(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+      {{- end }}
+      {{- if or (not $g.security.tls.enabled) ( and $g.security.tls.enabled ( eq .Values.service.endpoints.scrapeTargets.tls.enforced "optional")) }}
+      - job_name: 'kubernetes-service-endpoints'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names:
+                - {{ .Release.Namespace }}
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            action: replace
+            target_label: job
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scheme]
+            action: drop
+            regex: https
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: drop
+            regex: (.*-tls)
+          - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+            action: replace
+            target_label: __address__
+            regex: ((?:\[.+\])|(?:.+))(?::\d+);(\d+)
+            replacement: $1:$2
+          - action: labelmap
+            regex: __meta_kubernetes_service_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_service_name]
+            action: replace
+            target_label: kubernetes_name
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - {{ .Release.Namespace }}
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_container_init]
+            action: drop
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scheme]
+            action: drop
+            regex: https
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            action: drop
+            regex: (.*-tls)
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ((?:\[.+\])|(?:.+))(?::\d+);(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+      {{- end }}
+  {{- if .Values.config.recording_rules }}
+  recording_rules.yml: |
+{{ toYaml .Values.config.recording_rules | indent 4 }}
+  {{- end }}
+  {{- else }}
+  {{- range $file, $content := .Values.serverFiles }}
+  {{ $file }}:{{- tpl (toYaml $content) $ | indent 2 }}
+    {{- if and (eq $file "prometheus.yml")  $.Values.config.remote_write }}
+    remote_write:
+{{ toYaml $.Values.config.remote_write | indent 6 }}
+    {{- end }}
+  {{- end }}
+  {{- if .Values.config.recording_rules }}
+  recording_rules.yml: |
+{{ toYaml .Values.config.recording_rules | indent 4 }}
+  {{- end }}
+  {{- end }}
+{{- end }}

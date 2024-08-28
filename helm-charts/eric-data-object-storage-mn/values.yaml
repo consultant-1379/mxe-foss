@@ -1,0 +1,416 @@
+# Default values for the object storage service.
+# ---
+#global:
+#  registry:
+#    url: "armdocker.rnd.ericsson.se"
+#
+#  pullSecret: ""
+#
+#  security:
+#    tls:
+#      enabled: true
+#
+#  timezone: UTC
+#
+#  serviceNames:
+#    ctrl:
+#      bro: eric-ctrl-bro
+#
+#  servicePorts:
+#    ctrl:
+#      bro: 3000
+
+podPriority:
+    eric_data_object_storage_mn_mgt:
+        priorityClassName :
+    eric_data_object_storage_mn:
+        priorityClassName :
+
+global:
+  #DR-D1121-060, DR-D1121-068
+  labels:
+  #DR-D1121-060, DR-D1121-065
+  annotations:
+  log:
+    outputs: ["k8sLevel"]    #outputs: ["k8sLevel","applicationLevel"]
+productInfo:
+  rstate: R27A
+
+imageCredentials:
+  osmn:
+    registry:
+      url: # overrides global registry url
+    pullSecret:
+    repoPath:
+    pullPolicy: IfNotPresent
+  init:
+    registry:
+      url: # overrides global registry url
+    pullSecret:
+    repoPath:
+    pullPolicy: IfNotPresent
+  bra:
+    registry:
+      url: # overrides global registry url
+    pullSecret:
+    repoPath:
+    pullPolicy: IfNotPresent
+  logshipper:
+    registry:
+      url: # overrides global registry url
+      pullPolicy:
+    repoPath:
+
+logshipper:
+  storagePath: "/logs"
+  storageAllocation: "560Mi"
+  harvester:
+    closeTimeout: "5m"
+    logData:
+    - subPaths:
+      - "/kms_config.log*"
+      - "/manager.log*"
+      - "/bra.log*"
+      - "/minio.log*"
+      - "/tls_certs.log*"
+      multiline:
+        pattern: '^[[:space:]]'
+        negate: false
+        match: after
+## Configure syslog output
+logTransformer:
+  host: eric-log-transformer
+  tls:
+      enabled: true
+      certTtl:
+
+## set kubernetes cluster domain where object-storage service is running
+##
+clusterDomain: cluster.local
+
+## distributed  vs standalone
+##
+mode: distributed
+
+## Update strategy
+updateStrategy:
+  server:
+    type: RollingUpdate
+    rollingUpdate:
+      partition: 0        # rollingUpdate for StatefulSets
+      maxUnavailable: 25%
+      maxSurge: 25%
+
+  mgt:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1 # rollingUpdate for Deployment
+      maxSurge: 1       # rollingUpdate for Deployment
+
+## Pod priority settings
+##
+priorityClassName: ""
+
+## Mandatory parameters
+## Credentials to access storage service, a standard k8s secret, with data: accesskey and secretkey.
+credentials:
+  kubernetesSecretName: ""
+
+## Set default Minio volume mount path and number of nodes (only used for Minio distributed mode)
+##
+mountPath: "/export"
+replicas: 4
+
+## TLS Settings for Minio
+tls:
+  ## Given secret with publicCrt and privateKey files and pass that here as service certificate.
+  ## Otherwise SIP-TLS auto-generates a service certificate as default if certSecret "".
+  certSecret: ""
+  publicCrt: public.crt
+  privateKey: private.key
+  # Root CA for connecting Object Storage by HTTPS
+  caSecret: "eric-sec-sip-tls-trusted-root-cert"
+  caCert: "cacertbundle.pem"
+
+
+## Object Storage Data Scurity, auto Encryption/Decryption Setting
+## Object Storage sevice ensures all uploaded objects are encrypted using specified KMS configuration.
+## It only supports approle authentication type to login KMS. And tls enable is mandatory.
+##
+
+autoEncryption:
+  enabled: true
+  kmsConfigSecret: eric-data-object-storage-mn-kms-set
+
+## Key Management Service setting
+## Object Storage setup KMS configurations and generates kubernetes secret kmsConfigSecret in which
+## approle id and secret id is for setting minio environment MINIO_SSE_VAULT_APPROLE_ID and MINIO_SSE_VAULT_APPROLE_ID.
+##
+
+keyManagement:
+  tokenSecretName: eric-sec-key-management-root-token
+  tokenKey: token
+  hostname: eric-sec-key-management
+  serviceAccountNameForCredentials: eric-sec-key-management-admin
+  port: 8200
+  # Root CA for connecting to KMS by HTTPS
+  tls:
+    caSecret: "eric-sec-sip-tls-trusted-root-cert"
+    caCert: "cacertbundle.pem"
+
+## Persistent storage attributes (mandatory parameters)
+##
+##  Object storage pods use local storage if storageConnectivity set as "local".
+##  Because local volumes do not currently support dynamic provisioning, this
+##  requires system administrator to prepare,
+##    1. Specified StorageClass to delay volume binding until pod scheduling.
+##    2. PersistentVolume with spec.storageClassName as "local storage" per worker node.
+##  Note:
+##    The number of worker node must be equal or large than replicas number in distributed mode.
+##    And, guarantee the node in health state so that the pod can be scheduled on that node.
+
+persistentVolumeClaim:
+  # The storage class name for persistent volume,
+  storageClassName: ""
+  # The connectivity of the storage, either local or networked, networked is default
+  storageConnectivity: networked
+  #size of each pvc
+  size: 10Gi
+  #pvc name format: [volumeNamePrefix-]helmRelease-ChartName
+  volumeNamePrefix: export
+  # If subPath is set mount a sub folder of a volume instead of the root of the volume.
+  subPath: ""
+
+## Extra annotations, format: "AnnotA":"ValueA", "AnnotB":"ValueB"
+annotations: {
+  # TODO: Ask Guardians whether this change OK.
+  # Now there is a metrics-annotations template setting these up.
+}
+
+## Expose the Minio service only to be accessed from internal cluster by type ClusterIP
+##
+service:
+  annotations: {}
+  type: ClusterIP
+  port: 9000
+
+## Node labels for pod assignment
+##
+nodeSelector: {}
+tolerations: []
+# "soft" - It prefers to schedule pods to nodes that satisfy the anti-affinity but will not guarantee.
+# "hard" - Hard requirement that server pods must be scheduled on defferent nodes. The pods won't be scheduled if requirement not fulfilled.
+affinity:
+  podAntiAffinity: "hard"
+
+
+# Configure resource requests and limits
+resources:
+  ## Object Storage service instance pod
+  server:
+    requests:
+      memory: 2Gi
+      cpu: 1100m
+      ephemeral-storage: 256Mi
+    limits:
+      memory: 8Gi
+      cpu: 1100m
+      ephemeral-storage: 4Gi
+  ## Object Storage Management pod
+  mgt:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+      ephemeral-storage: 256Mi
+    limits:
+      memory: 512Mi
+      cpu: 500m
+      ephemeral-storage: 4Gi
+  brAgent:
+    requests:
+      memory: 16Mi
+      cpu: 200m
+      ephemeral-storage: 256Mi
+    limits:
+      memory: 256Mi
+      cpu: '1'
+      ephemeral-storage: 4Gi
+  logshipper:
+    requests:
+      memory: 50Mi
+      cpu: 100m
+      ephemeral-storage: 256Mi
+    limits:
+      memory: 100Mi
+      cpu: 250m
+      ephemeral-storage: 4Gi
+
+brAgent:
+  enabled: false
+  brLabelKey: adpbrlabelkey
+# TODO: Ask Guardians if this is OK. It's documented as being eric-data-object-storage-mn by default 
+  brLabelValue: eric-data-object-storage-mn
+  logLevel: info
+  retryTimes: 3
+  backupTypeList:
+    - "DEFAULT"
+  properties:
+    production_date: 2022-07-27
+  tls:
+    issuerReference: ""
+    certName: cert.pem
+    keyName: key.pem
+    paths:
+      internalCa: /etc/tls/ca/internal
+      clientCerts: /etc/tls/cert/client
+  objectStorage:
+    host: "eric-data-object-storage-mn"
+    port: 9000
+## Use this field to add environment variables relevant to Minio server. These fields will be passed on to Minio container(s)
+## when Chart is deployed
+environment:
+  ## To disable Minio Browser, set this value to off
+  MINIO_BROWSER: "off"
+  ## To set PM Auth type
+  MINIO_PROMETHEUS_AUTH_TYPE: "public"
+  ## Add other environment variables relevant to Minio server here. These values will be added to the container(s) as this Chart is deployed
+
+networkPolicy:
+  enabled: false
+  allowExternal: true
+
+## Specify the service account to use for the Minio pods. If 'create' is set to 'false'
+## and 'name' is left unspecified, the account 'default' will be used.
+## 'create' is required to set to 'true' if autoEncryption is enabled.
+serviceAccount:
+  create: true
+  ## The name of the service account to use. If 'create' is 'true', a service account with that name
+  ## will be created. Otherwise, a name will be auto-generated.
+  name:
+
+metrics:
+  # Metrics can not be disabled yet.
+  serviceMonitor:
+    enabled: false
+    additionalLabels: {}
+    # namespace: monitoring
+    # interval: 30s
+    # scrapeTimeout: 10s
+
+## Specify the user lifecycle configuration bash shell file when installing.
+## Parameter "--set-file eric-data-object-storage-mn.objects_lifecycle_cfg=<lifecycle-config.sh>"
+## should be included in helm install command line.
+objects_lifecycle_cfg: ""
+lifecycle:
+  ## Specify the MC default host name, used to add a default MC host in lifecyle job.
+  ## User can change it to the name they perferred.
+  mcHost: "client"
+  configMap: "lifecycle-config"
+  hookWeight: "-4"
+
+podDisruptionBudget:
+  maxUnavailable: 1
+
+terminationGracePeriodSeconds:
+  osmn: 30
+  mgt: 30
+
+# Pod Topology Spread Constraints, specifies how to spread matching pods
+# among the given topology. Example:
+# topologySpreadConstraints:
+#   osmn:
+#    - maxSkew: 1
+#      topologyKey: kubernetes.io/hostname
+#      whenUnsatisfiable: DoNotSchedule
+#   mgt:
+#    - maxSkew: 2
+#      topologyKey: kubernetes.io/hostname
+#      whenUnsatisfiable: DoNotSchedule
+topologySpreadConstraints:
+  osmn: []
+  mgt: []
+
+# Liveness and Readiness probe values
+probes:
+  server:
+    livenessProbe:
+      initialDelaySeconds: 30
+      periodSeconds: 5
+      timeoutSeconds: 15
+      successThreshold: 1
+      failureThreshold: 3
+    readinessProbe:
+      initialDelaySeconds: 60
+      periodSeconds: 15
+      timeoutSeconds: 15
+      successThreshold: 1
+      failureThreshold: 3
+  mgt:
+    livenessProbe:
+      initialDelaySeconds: 15
+      periodSeconds: 5
+      timeoutSeconds: 15
+      successThreshold: 1
+      failureThreshold: 3
+    readinessProbe:
+      initialDelaySeconds: 15
+      periodSeconds: 5
+      timeoutSeconds: 15
+      successThreshold: 1
+      failureThreshold: 3
+  brAgent:
+    readinessProbe:
+      initialDelaySeconds: 30
+      periodSeconds: 1
+      timeoutSeconds: 15
+      successThreshold: 1
+      failureThreshold: 60
+    livenessProbe:
+      initialDelaySeconds: 15
+      periodSeconds: 10
+      timeoutSeconds: 15
+      successThreshold: 1
+      failureThreshold: 3
+
+# labels
+labels: {}
+
+## The Seccomp profile for container level security context
+## Type values are 'Unconfined', 'RuntimeDefault', 'Localhost', ''
+## Default value is '' for backward compatibility
+seccompProfile:
+  manager:
+    type:
+#    localhostProfile: profiles/seccompprofile.json
+  logshipper:
+    type:
+#    localhostProfile: profiles/seccompprofile.json
+  kms-config:
+    type:
+#    localhostProfile: profiles/seccompprofile.json
+  eric-data-object-storage-mn:
+    type:
+#    localhostProfile: profiles/seccompprofile.json
+  eric-data-object-storage-mn-bra:
+    type:
+#    localhostProfile: profiles/seccompprofile.json
+
+## The AppArmor profile for pod level annotations
+## Type values are 'unconfined', 'runtime/default', 'localhost', ''
+## Default value is '' for backward compatibility
+appArmorProfile:
+  manager:
+    type: unconfined
+#    localhostProfile: profiles/apparmorprofile.json
+  logshipper:
+    type: unconfined
+#    localhostProfile: profiles/apparmorprofile.json
+  kms-config:
+    type: unconfined
+#    localhostProfile: profiles/apparmorprofile.json
+  eric-data-object-storage-mn:
+    type: unconfined
+#    localhostProfile: profiles/apparmorprofile.json
+  eric-data-object-storage-mn-bra:
+    type: unconfined
+#    localhostProfile: profiles/apparmorprofile.json

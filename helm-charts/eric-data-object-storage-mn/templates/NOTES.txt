@@ -1,0 +1,9 @@
+Ericsson object storage can be accessed via port {{ .Values.service.port }} on the following DNS name from within your cluster:
+{{ template "eric-data-object-storage-mn.fullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}
+
+
+{{ if and (.Values.networkPolicy.enabled) (not .Values.networkPolicy.allowExternal) }}
+Note: Since NetworkPolicy is enabled, only pods with label
+app.kubernetes.io/instance: {{ .Release.Name }}
+will be able to connect to this storage cluster.
+{{- end }}

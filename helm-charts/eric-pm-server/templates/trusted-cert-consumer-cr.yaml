@@ -1,0 +1,13 @@
+{{- range $ct := .Values.config.certm_tls }}
+apiVersion: certm.sec.ericsson.com/v1
+kind: ExternalCertificate
+metadata:
+  name: {{ template "eric-pm-server.name" $ }}-{{ $ct.name }}-tls-ca-certificate
+  annotations: {{- include "eric-pm-server.annotations" $ | nindent 4 }}
+  labels: {{- include "eric-pm-server.labels" $ | nindent 4 }}
+spec:
+  generated-secret-name: {{ template "eric-pm-server.name" $ }}-{{ $ct.name }}-trusted-cert-consumer-secret
+  generated-secret-type: opaque
+  trusted-certificate-list-name: {{ $ct.trustedCertName }}
+---
+{{- end -}}

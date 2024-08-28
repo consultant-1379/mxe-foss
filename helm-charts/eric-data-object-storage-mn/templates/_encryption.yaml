@@ -1,0 +1,24 @@
+{{- define "eric-data-object-storage-mn.autoEncryptionEnv" -}}
+- name: MINIO_SSE_AUTO_ENCRYPTION
+  value: "on"
+- name: MINIO_KMS_VAULT_DEPRECATION
+  value: "off"
+- name: MINIO_SSE_VAULT_ENDPOINT
+  value: https://{{ .Values.keyManagement.hostname }}.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}:{{ .Values.keyManagement.port }}
+- name: MINIO_SSE_VAULT_CAPATH
+  value: /kms-ca-certs/ca.crt
+- name: MINIO_SSE_VAULT_KEY_NAME
+  value: my-minio-key
+- name: MINIO_SSE_VAULT_AUTH_TYPE
+  value: approle
+- name: MINIO_SSE_VAULT_APPROLE_ID
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.autoEncryption.kmsConfigSecret | quote }}
+      key: role_id
+- name: MINIO_SSE_VAULT_APPROLE_SECRET
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.autoEncryption.kmsConfigSecret | quote }}
+      key: secret_id
+{{- end -}}

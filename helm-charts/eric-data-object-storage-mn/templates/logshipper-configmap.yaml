@@ -1,0 +1,229 @@
+{{/*
+Filebeat ConfigMap configuration
+*/}}
+{{- $default := fromJson (include "eric-data-object-storage-mn.logshipper-default-value" .) -}}
+{{- $g := fromJson (include "eric-data-object-storage-mn.logshipper-global" .) -}}
+{{- $i := fromJson (include "eric-data-object-storage-mn.logshipper-internal" .) -}}
+apiVersion: "v1"
+kind: "ConfigMap"
+metadata:
+  name: "{{ include "eric-data-object-storage-mn.logshipper-service-fullname" . }}-logshipper-cfg"
+  annotations:
+    {{- include "eric-data-object-storage-mn.annotations" . | nindent 4 }}
+  labels:
+    {{- include "eric-data-object-storage-mn.logshipper-labels" . | nindent 4 }}
+data:
+  {{- $closeTimeout := $default.logshipper.harvester.closeTimeout | quote }}
+  {{- $storagePath := $default.logshipper.storagePath }}
+  {{- $serviceId := include "eric-data-object-storage-mn.logshipper-service-fullname" . | quote }}
+  filebeat.yml: |
+    filebeat.inputs:
+    - type: log
+      paths:
+        - {{ $storagePath }}/filebeat.log
+      fields:
+        logplane: {{ $default.logshipper.logplane }}
+        kubernetes:
+          pod:
+            uid: ${POD_UID}
+            name: ${POD_NAME}
+          node:
+            name: ${NODE_NAME}
+          namespace: ${NAMESPACE}
+          labels:
+            app:
+              kubernetes:
+                io/name: {{ $serviceId }}
+      close_timeout: {{ $closeTimeout }}
+      fields_under_root: true
+      processors:
+      - decode_json_fields:
+          fields:
+            - "message"
+          target: "json"
+          overwrite_keys: true
+      - add_fields:
+          target: ""
+          fields:
+            json.service_id: {{ $serviceId }}
+            json.version: "1.0.0"
+            json.metadata.container_name: "logshipper"
+      - rename:
+          fields:
+            - from: "json.level"
+              to: "json.severity"
+            - from: "json.logger"
+              to: "json.extra_data.filebeat.logger"
+            - from: "json.caller"
+              to: "json.extra_data.filebeat.caller"
+          ignore_missing: true
+      - add_fields:
+          when:
+             equals:
+               json.severity: "warn"
+          target: ""
+          fields:
+            json.severity: "warning"
+      - drop_fields:
+          fields:
+            - "json.system_info"
+      {{- if $default.logshipper.includeLines }}
+      include_lines:
+        {{- toYaml $default.logshipper.includeLines | nindent 8 }}
+      {{- end }}
+      {{- if $default.logshipper.excludeLines }}
+      exclude_lines:
+        {{- toYaml $default.logshipper.excludeLines | nindent 8 }}
+      {{- end }}
+    - type: log
+      paths:
+        {{- if eq (len $default.logshipper.harvester.logData) 0 }}
+        - {{ $storagePath }}/**/*
+        {{- else }}
+        - {{ $storagePath }}/init.log
+        {{- end }}
+      fields:
+        logplane: {{ $default.logshipper.logplane }}
+        kubernetes:
+          pod:
+            uid: ${POD_UID}
+            name: ${POD_NAME}
+          node:
+            name: ${NODE_NAME}
+          namespace: ${NAMESPACE}
+          labels:
+            app:
+              kubernetes:
+                io/name: {{ $serviceId }}
+      close_timeout: {{ $closeTimeout }}
+      fields_under_root: true
+      exclude_files:
+        - '\.pid$'
+        - '^{{ $storagePath }}/data/'
+        - '^{{ $storagePath }}/filebeat.log*'
+        - '^{{ $storagePath }}/init.log.*'
+        {{- if $default.logshipper.excludeFiles }}
+          {{- toYaml $default.logshipper.excludeFiles | nindent 8 }}
+        {{- end }}
+     {{- if $default.logshipper.includeLines }}
+      include_lines:
+        {{- toYaml $default.logshipper.includeLines | nindent 8 }}
+     {{- end }}
+     {{- if $default.logshipper.excludeLines }}
+      exclude_lines:
+        {{- toYaml $default.logshipper.excludeLines | nindent 8 }}
+     {{- end }}
+      processors:
+      - decode_json_fields:
+          fields:
+            - "message"
+          target: "json"
+          overwrite_keys: true
+    {{- range $key, $value := $default.logshipper.harvester.logData }}
+    - type: log
+      paths:
+        {{- range $value.subPaths }}
+        - {{ $storagePath }}/{{ . }}
+        {{- end }}
+      fields:
+        logplane: {{ $value.logplane | default $default.logshipper.logplane }}
+        {{- if hasKey $value "additionalFields" }}
+        extra_data:
+        {{- range $key, $value := $value.additionalFields }}
+          {{ $key }}: {{ . | quote }}
+        {{- end }}
+        {{- end }}
+        kubernetes:
+          pod:
+            uid: ${POD_UID}
+            name: ${POD_NAME}
+          node:
+            name: ${NODE_NAME}
+          namespace: ${NAMESPACE}
+          labels:
+            app:
+              kubernetes:
+                io/name: {{ $serviceId }}
+      close_timeout: {{ $closeTimeout }}
+      fields_under_root: true
+      exclude_files:
+        - '\.pid$'
+        - '^{{ $storagePath }}/data/'
+        - '^{{ $storagePath }}/filebeat.log*'
+        - '^{{ $storagePath }}/init.log.*'
+        {{- if $value.excludeFiles }}
+          {{- toYaml $value.excludeFiles | nindent 8 }}
+        {{- end }}
+     {{- if $value.includeLines }}
+      include_lines:
+        {{- toYaml $value.includeLines | nindent 8 }}
+     {{- end }}
+     {{- if $value.excludeLines }}
+      exclude_lines:
+        {{- toYaml $value.excludeLines | nindent 8 }}
+     {{- end }}
+      {{- if $value.multiline }}
+      multiline:
+        pattern: {{ $value.multiline.pattern | quote }}
+        negate: {{ $value.multiline.negate }}
+        match: {{ $value.multiline.match }}
+      {{- end }}
+      processors:
+        - decode_json_fields:
+            fields:
+              - "message"
+            target: "json"
+            overwrite_keys: true
+    {{- end }}
+    processors:
+      - rename:
+          fields:
+            - from: "log.file.path"
+              to: "extra_data.filename"
+          ignore_missing: true
+      - drop_fields:
+          fields:
+            - "input"
+            - "log"
+            - "host"
+            - "agent"
+            - "ecs"
+    {{- if $i.output.file.enabled }}
+    output.file:
+      path: {{ $i.output.file.path }}
+      filename: {{ $i.output.file.name }}
+    {{- end }}
+    {{- if $i.output.logTransformer.enabled }}
+    output.logstash:
+    {{- if $g.security.tls.enabled }}
+      hosts: "{{ $default.logshipper.logtransformer.host }}:5044"
+    {{- else }}
+      hosts: "{{ $default.logshipper.logtransformer.host }}:5045"
+    {{- end }}
+      bulk_max_size: 2048
+      worker: 1
+      pipelining: 0
+      ttl: 30
+      {{- if $g.security.tls.enabled }}
+      ssl.certificate_authorities: "/run/secrets/ca-certificates/cacertbundle.pem"
+      ssl.certificate: "/run/secrets/certificates/clicert.pem"
+      ssl.key: "/run/secrets/certificates/cliprivkey.pem"
+      ssl.verification_mode: "full"
+      ssl.renegotiation: "freely"
+      ssl.supported_protocols: ["TLSv1.2", "TLSv1.3"]
+      ssl.cipher_suites: []
+      {{- end }}
+    {{- end }}
+    filebeat.registry.flush: 5s
+    logging.level: {{ $default.log.logshipper.level | quote | lower }}
+    # The list of debugging-only selector tags. Use * to enable debug output for all components.
+    logging.selectors: [ "beats", "service", "harvester", "input" ]
+    logging.metrics.enabled: false
+    logging.json: true
+    logging.to_files: true
+    logging.files:
+      path: {{ $storagePath }}
+      name: filebeat.log
+      keepfiles: 5
+      permissions: 0644
+      rotateeverybytes: 2000000

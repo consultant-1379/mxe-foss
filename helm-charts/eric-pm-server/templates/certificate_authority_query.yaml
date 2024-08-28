@@ -1,0 +1,17 @@
+{{- $g := fromJson (include "eric-pm-server.global" .) -}}
+{{- if and $g.security.tls.enabled  (not .Values.service.endpoints.reverseproxy.tls.certificateAuthorityBackwardCompatibility) }}
+apiVersion: siptls.sec.ericsson.com/v1
+kind: InternalUserCA
+metadata:
+  name: {{ template "eric-pm-server.name" . }}-query-ca
+  annotations: {{- include "eric-pm-server.annotations" . | nindent 4 }}
+  labels: {{- include "eric-pm-server.labels" . | nindent 4 }}
+spec:
+  kubernetes:
+    generatedSecretName: {{ template "eric-pm-server.name" . }}-query-ca
+    certificateName: "query-cacertbundle.pem"
+
+  certificate:
+    subject:
+      cn: {{ template "eric-pm-server.name" . }}
+{{- end }}

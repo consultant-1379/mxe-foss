@@ -1,0 +1,256 @@
+{{- $global := fromJson (include "eric-data-object-storage-mn.global" .) -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ template "eric-data-object-storage-mn.fullname" . }}
+  labels:
+    {{- include "eric-data-object-storage-mn.labels" . | nindent 4 }}
+  annotations:
+    {{- include "eric-data-object-storage-mn.metrics-annotations" . | nindent 4 }}
+    {{- $apparmorAnn := include "eric-data-object-storage-mn.eric-data-object-storage-mn.appArmorAnnotations" . | fromYaml -}}
+    {{- $logshipperAppArmorAnn := include "eric-data-object-storage-mn.logshipper.appArmorAnnotations" . | fromYaml -}}
+    {{- if has "applicationLevel" $global.log.outputs }}
+    {{- $apparmorAnn = merge $apparmorAnn $logshipperAppArmorAnn }}
+    {{- end }}
+    {{- include "eric-data-object-storage-mn.mergeAnnotations" (dict "location" .Template.Name "sources" (list $apparmorAnn)) | trim | nindent 4 }}
+spec:
+  updateStrategy:
+    type: {{ .Values.updateStrategy.server.type | quote }}
+    rollingUpdate:
+      partition: {{ .Values.updateStrategy.server.rollingUpdate.partition }}
+  podManagementPolicy: "Parallel"
+  serviceName: {{ template "eric-data-object-storage-mn.fullname" . }}-svc
+  {{- if eq .Values.mode "distributed" }}
+  replicas: {{ .Values.replicas }}
+  {{- else if eq .Values.mode "standalone" }}
+  replicas: 1
+  {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ template "eric-data-object-storage-mn.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      name: {{ template "eric-data-object-storage-mn.fullname" . }}
+      labels:
+        {{- include "eric-data-object-storage-mn.labels" . | nindent 8 }}
+      annotations:
+        {{- include "eric-data-object-storage-mn.metrics-annotations" . | nindent 8 }}
+        {{- $apparmorAnn := include "eric-data-object-storage-mn.eric-data-object-storage-mn.appArmorAnnotations" . | fromYaml -}}
+        {{- $logshipperAppArmorAnn := include "eric-data-object-storage-mn.logshipper.appArmorAnnotations" . | fromYaml -}}
+        {{- if has "applicationLevel" $global.log.outputs }}
+        {{- include "eric-data-object-storage-mn.LsAppArmorProfileAnnotation" . | nindent 8 -}}
+        {{- $apparmorAnn = merge $apparmorAnn $logshipperAppArmorAnn }}
+        {{- end }}
+        {{- include "eric-data-object-storage-mn.mergeAnnotations" (dict "location" .Template.Name "sources" (list $apparmorAnn)) | trim | nindent 8 }}
+    spec:
+      {{- if .Values.podPriority.eric_data_object_storage_mn.priorityClassName }}
+      priorityClassName: {{ .Values.podPriority.eric_data_object_storage_mn.priorityClassName | quote}}
+      {{- end }}
+      securityContext:
+        fsGroup: {{ template "eric-data-object-storage-mn.fsGroup.coordinated" . }}
+      {{- if .Values.priorityClassName }}
+      priorityClassName: "{{ .Values.priorityClassName | quote }}"
+      {{- end }}
+      serviceAccountName: {{ include "eric-data-object-storage-mn.serviceAccountName" . | quote }}
+{{- if include "eric-data-object-storage-mn.pullSecrets" . }}
+      imagePullSecrets:
+        - name: {{ template "eric-data-object-storage-mn.pullSecrets" . }}
+{{- end }}
+      containers:
+      {{- if has "applicationLevel" $global.log.outputs }}
+      {{- include "eric-data-object-storage-mn.logshipper-container" . | indent 8 }}
+      {{- end }}
+        - name: {{ template "eric-data-object-storage-mn.fullname" . }}
+          image: {{ template "eric-data-object-storage-mn.imagePath" . }}
+          imagePullPolicy: {{ .Values.imageCredentials.osmn.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - all
+            {{- include "eric-data-object-storage-mn.eric-data-object-storage-mn.seccompProfile" . | indent 12 }}
+          tty: true
+          command: [ "/sbin/minio.sh","{{ .Values.mode }}","{{ $global.security.tls.enabled }}","{{ .Values.mountPath }}","{{ template `eric-data-object-storage-mn.fullname` $ }}","{{ $.Release.Namespace }}","{{ $.Values.clusterDomain }}","{{ .Values.replicas }}","{{ has "applicationLevel" $global.log.outputs }}" ]
+          volumeMounts:
+            - name: tmp
+              mountPath: "/tmp"
+            - name: minio
+              mountPath: "/minio"
+      {{- if has "applicationLevel" $global.log.outputs }}
+          {{- include "eric-data-object-storage-mn.logshipper-storage-path" . | indent 12 }}
+      {{- else }}
+            - name: logs
+              mountPath: "/logs"
+      {{- end }}
+            - name: {{ .Values.persistentVolumeClaim.volumeNamePrefix }}
+              mountPath: {{ .Values.mountPath }}
+              {{- if .Values.persistentVolumeClaim.subPath }}
+              subPath: "{{ .Values.persistentVolumeClaim.subPath }}"
+              {{- end }}
+            {{- if $global.security.tls.enabled }}
+            - name: cert-secret-volume
+              mountPath: /minio/tls_certs
+            {{- end }}
+            {{- if and .Values.autoEncryption.enabled $global.security.tls.enabled }}
+            - name: kms-ca
+              mountPath: /kms-ca-certs
+            {{- end }}
+          ports:
+            - name: service
+              containerPort: 9000
+          env:
+{{- if has "k8sLevel" $global.log.outputs }}
+            - name: LOG_INDIRECT_STREAM
+              value: "true"
+{{- end }}
+{{- if has "applicationLevel" $global.log.outputs }}
+            - name: LOG_DIRECT_STREAM
+              value: "true"
+{{- end }}
+            - name: TZ
+              value: {{ $global.timezone | quote }}
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.credentials.kubernetesSecretName }}
+                  key: accesskey
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.credentials.kubernetesSecretName }}
+                  key: secretkey
+            {{- if and .Values.autoEncryption.enabled $global.security.tls.enabled }}
+            {{- include "eric-data-object-storage-mn.autoEncryptionEnv" . | nindent 12 }}
+            {{- end }}
+            {{- range $key, $val := .Values.environment }}
+            - name: {{ $key }}
+              value: {{ $val | quote }}
+            {{- end}}
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: service
+              {{- if $global.security.tls.enabled }}
+              scheme: HTTPS
+              {{- else }}
+              scheme: HTTP
+              {{- end }}
+            initialDelaySeconds: {{ .Values.probes.server.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.server.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.server.livenessProbe.timeoutSeconds }}
+            successThreshold: {{ .Values.probes.server.livenessProbe.successThreshold }}
+            failureThreshold: {{ .Values.probes.server.livenessProbe.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              {{- if $global.security.tls.enabled }}
+              scheme: HTTPS
+              {{ else }}
+              scheme: HTTP
+              {{- end }}
+              path: /minio/health/ready
+              port: service
+            initialDelaySeconds: {{ .Values.probes.server.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.server.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.server.readinessProbe.timeoutSeconds }}
+            successThreshold: {{ .Values.probes.server.readinessProbe.successThreshold }}
+            failureThreshold: {{ .Values.probes.server.readinessProbe.failureThreshold }}
+          resources:
+{{ toYaml .Values.resources.server | indent 12 }}
+
+{{- if or .Values.nodeSelector $global.nodeSelector }}
+      nodeSelector:
+        {{- include "eric-data-object-storage-mn.nodeSelector" . | nindent 8 }}
+{{- end }}
+
+    {{- if eq .Values.affinity.podAntiAffinity "hard" }}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - {{ template "eric-data-object-storage-mn.name" . }}
+            topologyKey: "kubernetes.io/hostname"
+    {{- else if eq .Values.affinity.podAntiAffinity "soft" }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - {{ template "eric-data-object-storage-mn.name" . }}
+              topologyKey: "kubernetes.io/hostname"
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: "10Mi"
+            medium: "Memory"
+        - name: minio
+          emptyDir:
+            sizeLimit: "10Mi"
+            medium: "Memory"
+      {{- if has "applicationLevel" $global.log.outputs }}
+      {{- include "eric-data-object-storage-mn.logshipper-volume" . | indent 8 }}
+      {{- else }}
+        - name: logs
+          emptyDir:
+            sizeLimit: "500Mi"
+      {{- end }}
+        - name: minio-user
+          secret:
+            secretName: {{ .Values.credentials.kubernetesSecretName }}
+        {{- if $global.security.tls.enabled }}
+        - name: cert-secret-volume
+          secret:
+            secretName: {{ if .Values.tls.certSecret }}{{ .Values.tls.certSecret }}{{ else }}{{ template "eric-data-object-storage-mn.fullname" . }}-cert{{ end }}
+            items:
+            - key: {{ if and .Values.tls.certSecret .Values.tls.publicCrt }}{{ .Values.tls.publicCrt }}{{ else }}srvcert.pem{{ end }}
+              path: public.crt
+            - key: {{ if and .Values.tls.certSecret .Values.tls.privateKey }}{{ .Values.tls.privateKey }}{{ else }}srvprivkey.pem{{ end }}
+              path: private.key
+            - key: {{ if and .Values.tls.certSecret .Values.tls.publicCrt }}{{ .Values.tls.publicCrt }}{{ else }}srvcert.pem{{ end }}
+              path: CAs/public.crt
+        {{- end }}
+        {{- if and .Values.autoEncryption.enabled $global.security.tls.enabled }}
+        - name: kms-ca
+          secret:
+            secretName: {{ .Values.keyManagement.tls.caSecret | quote }}
+            items:
+            - key: {{ .Values.keyManagement.tls.caCert | quote }}
+              path: ca.crt
+        {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds.osmn }}
+      {{if .Values.topologySpreadConstraints.osmn -}}
+      topologySpreadConstraints:
+        {{- toYaml .Values.topologySpreadConstraints.osmn | trim | nindent 8 }}
+      {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        {{- $name := include "eric-data-object-storage-mn.fullname" . -}}
+        {{- $vctName := .Values.persistentVolumeClaim.volumeNamePrefix }}
+        name: {{ $vctName }}
+        labels: {{- include "eric-data-object-storage-mn.copyVCTLabels" (dict "vctName" $vctName "release" .Release "name" $name) | nindent 10 }}
+        annotations: {{- include "eric-data-object-storage-mn.copyVCTAnnotations" (dict "vctName" $vctName "release" .Release "name" $name) | nindent 10 }}
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        {{- if .Values.persistentVolumeClaim.storageClassName }}
+        storageClassName: {{ .Values.persistentVolumeClaim.storageClassName | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistentVolumeClaim.size }}

@@ -1,0 +1,22 @@
+{{/* Template for dumping variables
+Can be used to print the content of a variable on the console
+during helm install or helm upgrade
+NOTE: The install/upgrade will fail at this point after printing the variable
+Usage example:
+{{- $myVar := (list "a" 1 "x" (dict "x1" nil)) }}
+{{- template "print.var_dump" $myVar }}
+
+Gives the following output:
+[
+  "a",
+  1,
+  "x",
+  {
+    "x1": null
+  }
+]
+*/}}
+
+{{- define "print.var_dump" -}}
+{{- . | mustToPrettyJson | printf "\nThe JSON output of the dumped var is: \n%s" | fail }}
+{{- end -}}

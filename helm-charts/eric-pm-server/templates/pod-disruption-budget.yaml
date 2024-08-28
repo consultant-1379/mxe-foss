@@ -1,0 +1,15 @@
+{{- if .Capabilities.APIVersions.Has "policy/v1/PodDisruptionBudget" }}
+apiVersion: policy/v1
+{{- else }}
+apiVersion: policy/v1beta1
+{{- end }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ template "eric-pm-server.name" . }}
+  labels: {{- include "eric-pm-server.labels" . | nindent 4 }}
+  annotations: {{ include "eric-pm-server.annotations" . | nindent 4 }}
+spec:
+  minAvailable: {{ int .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      app: {{ template "eric-pm-server.name" . }}

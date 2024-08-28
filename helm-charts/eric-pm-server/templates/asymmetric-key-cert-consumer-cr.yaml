@@ -1,0 +1,13 @@
+{{- range $ct := .Values.config.certm_tls }}
+apiVersion: certm.sec.ericsson.com/v1
+kind: ExternalCertificate
+metadata:
+  name: {{ template "eric-pm-server.name" $ }}-{{ $ct.name }}-tls-server-certificate
+  annotations: {{- include "eric-pm-server.annotations" $ | nindent 4 }}
+  labels: {{- include "eric-pm-server.labels" $ | nindent 4 }}
+spec:
+  generated-secret-name: {{ template "eric-pm-server.name" $ }}-{{ $ct.name }}-asymmetric-key-cert-consumer-secret
+  generated-secret-type: tls
+  asymmetric-key-certificate-name: {{ $ct.clientKeyName }}/{{ $ct.clientCertName }}
+---
+{{- end -}}

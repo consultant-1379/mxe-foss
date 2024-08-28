@@ -1,0 +1,13 @@
+The PM Server can be accessed via port {{ .Values.server.service.servicePort }} on the following DNS name from within your cluster:
+{{ template "eric-pm-server.name" . }}.svc.cluster.local
+
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app={{ template "eric-pm-server.name" . }},component={{ .Values.server.name }}" -o jsonpath="{.items[0].metadata.name}")
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 9090
+
+{{- if .Values.server.persistentVolume.enabled }}
+{{- else }}
+#################################################################################
+######   WARNING: Persistence is disabled!!! You will lose your data when   #####
+######            the Server pod is terminated.                             #####
+#################################################################################
+{{- end }}

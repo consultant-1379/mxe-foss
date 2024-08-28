@@ -1,0 +1,226 @@
+modelVersion: 2.0
+
+# Import the file containing the versions of external dependencies
+import:
+  dependency: dependencies.yaml
+
+docker-images:
+  - adp-release-auto: armdocker.rnd.ericsson.se/proj-adp-cicd-drop/bob-adp-release-auto:2.0.0-23
+  - k8s-test: armdocker.rnd.ericsson.se/proj-adp-cicd-drop/bob-py3kubehelmbuilder:latest
+  - java8-maven-builder: armdocker.rnd.ericsson.se/proj-adp-cicd-drop/bob-javamvnbuilder.minideb:latest
+  - java11-maven-builder: armdocker.rnd.ericsson.se/proj-adp-cicd-drop/bob-java11mvnbuilder:latest
+  - go-builder: armdocker.rnd.ericsson.se/proj-adp-cicd-drop/bob-gobuilder.alpine:latest
+  - nodejs-builder: armdocker.rnd.ericsson.se/proj-mxe-ci-internal/adp-cicd/nodejsbuilder12.alpine092021:python3
+  - helm-dr-check: armdocker.rnd.ericsson.se/proj-adp-cicd-drop/common-library-adp-helm-dr-check:latest
+  - mxe-toolkit: armdocker.rnd.ericsson.se/proj-mxe-ci-internal/mxe-toolkit:20220223-ubuntu-20220105
+
+properties:
+  - docker-image-registry-server: armdocker.rnd.ericsson.se
+  - docker-image-repopath-release: proj-mxe-release
+  - docker-image-repopath-drop: proj-mxe
+  - docker-image-repopath-dev: proj-mxe-ci-internal
+  - docker-image-repo-internal: ${docker-image-registry-server}/${docker-image-repopath-dev}
+  - docker-image-repo-public: ${docker-image-registry-server}/${docker-image-repopath-drop}
+  - docker-image-repo-release: ${docker-image-registry-server}/${docker-image-repopath-release}
+  - helm: "helm"
+  - helm-chart-repository-server: https://armdocker.rnd.ericsson.se/artifactory
+  - helm-chart-repopath-release: proj-mxe-release-helm
+  - helm-chart-repopath-drop: proj-mxe-helm
+  - helm-chart-repopath-dev: proj-mxe-dev-helm
+  - helm-chart-repo-internal: ${helm-chart-repository-server}/${helm-chart-repopath-dev}
+  - helm-chart-repo-public: ${helm-chart-repository-server}/${helm-chart-repopath-drop}
+  - helm-chart-repo-release: ${helm-chart-repository-server}/${helm-chart-repopath-release}
+  - generic-repository-server: https://armdocker.rnd.ericsson.se/artifactory
+  - generic-repopath-release: proj-mxe-release-generic
+  - generic-repopath-drop: proj-mxe-generic
+  - generic-repopath-dev: proj-mxe-dev-generic
+  - generic-repo-internal: ${generic-repository-server}/${generic-repopath-dev}
+  - generic-repo-public: ${generic-repository-server}/${generic-repopath-drop}
+  - generic-repo-release: ${generic-repository-server}/${generic-repopath-release}
+  - generic-repo-deps: ${generic-repository-server}/proj-mxe-deps-generic-local
+  - docker-flags-alpine: --volume /etc/localtime:/etc/localtime:ro
+  - docker-flags-debian: --env TZ="$(cat /etc/timezone)"
+  - docker-flags-maven: --volume ${env.MAVEN_REPO_LOCAL}:${env.MAVEN_REPO_LOCAL} ${docker-flags-debian}
+  - docker-flags-go: "--env GOCACHE=${env.GOCACHE} --volume ${env.GOCACHE}:${env.GOCACHE} --env GOPATH=${env.GOPATH}   --volume ${env.GOPATH}:${env.GOPATH} ${docker-flags-alpine}"
+  - docker-flags-kubeconfig: "--env KUBECONFIG=/tmp/admin.conf --volume ${env.KUBECONFIG}:/tmp/admin.conf:ro"
+  - docker-flags-adp-release-auto: "--env HELM_REPO_CREDENTIALS=/tmp/helm_credentials.yaml --volume ${env.HELM_REPO_CREDENTIALS}:/tmp/helm_credentials.yaml:ro"
+  - docker-flags-helm3-enable: "--env ENABLE_HELM_V3=true --env HELM_VERSION=${env.HELM_VERSION}"
+  - docker-flags-helm3: "--env XDG_DATA_HOME=${env.PWD}/.bob/helm/data --env XDG_CACHE_HOME=${env.PWD}/.bob/helm/cache --env XDG_CONFIG_HOME=${env.PWD}/.bob/helm/config --env HELM_VERSION=${env.HELM_VERSION}"
+  - docker-flags-certs: "--volume /etc/ssl/certs:/etc/ssl/certs:ro --volume /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro --volume /usr/share/ca-certificates:/usr/share/ca-certificates:ro"
+  - docker-flags-mxe-deployer: "--volume ${env.PWD}/.bob/mxe-deployer-config/:/home/helmuser/.mxe-deploy/"
+
+env:
+  - PWD
+  - USER
+  - HOME
+  - KUBECONFIG (default=${env.HOME}/.kube/config)
+  - HELM_REPO_CREDENTIALS (default=${env.PWD}/resources/helm_credentials.yaml)
+  - API_TOKEN
+  - HELM_VERSION(default=3.8.1)
+  - TEMP_DIR (default=$PWD/.bob/temp)
+  - MXE_CHART_REPO (default=https://arm.seli.gic.ericsson.se/artifactory/proj-mxe-deps-helm)
+
+var:
+  - CHART_NAME
+  - CHART_VERSION
+  - CHART_REPO
+  - WORK_DIR 
+  - CHART_OUTPUT_DIR
+  - CHART_PKG_PATH
+  - CHART_DIR
+  - CHART_LOCATION_IN_REPO
+
+rules:
+  info:
+    - task: printenv
+      cmd: printenv | sort
+  
+  clean:
+    - task: delete_files 
+      cmd: rm -rf "${env.PWD}/.bob/*"
+  
+  get_chart:
+    - task: download
+      docker-image: adp-release-auto
+      docker-flags:
+        - "${docker-flags-helm3-enable}"
+      cmd: 
+        - mkdir -p ${env.TEMP_DIR}
+        - rm -rf ${env.TEMP_DIR}/${var.CHART_NAME}
+        - helm fetch ${var.CHART_NAME} --version ${var.CHART_VERSION} --repo ${var.CHART_REPO} --untar --untardir ${env.TEMP_DIR}
+        - rm -rf ${env.TEMP_DIR}/${var.CHART_NAME}-${var.CHART_VERSION}.tgz
+  
+  package_chart:
+    - task: package-chart
+      docker-image: adp-release-auto
+      docker-flags:
+      - "${docker-flags-helm3-enable}"
+      cmd: 
+      - mkdir -p ${var.WORK_DIR} ${var.CHART_OUTPUT_DIR}
+      - helm-package
+        --folder ${var.CHART_DIR}
+        --workdir ${var.WORK_DIR}
+        --output ${var.CHART_OUTPUT_DIR}
+        --version ${var.CHART_VERSION}
+
+  push_chart:
+    - task: upload
+      docker-image: adp-release-auto
+      cmd: upload_file.sh
+        --filename=${var.CHART_PKG_PATH}
+        --repository=${env.MXE_CHART_REPO}
+        --api-token=${env.API_TOKEN}
+  
+  delete_chart: 
+    - task: delete 
+      docker-image: adp-release-auto
+      cmd: curl --header "X-JFrog-Art-Api:${env.API_TOKEN}" --request DELETE --location "${var.CHART_LOCATION_IN_REPO}" || true;
+
+
+  download_seldon_chart:
+    - task: set_var 
+      cmd:
+        - echo ${dependency.SELDON_CORE_CHART_NAME} > .bob/var.CHART_NAME
+        - echo ${dependency.SELDON_CORE_CHART_VERSION} > .bob/var.CHART_VERSION
+        - echo ${dependency.SELDON_CORE_CHART_REPO_URL} > .bob/var.CHART_REPO 
+    - rule: get_chart
+
+  download_spark_operator_chart:
+    - task: set_var 
+      cmd:
+        - echo ${dependency.SPARK_OPERATOR_CHART_NAME} > .bob/var.CHART_NAME
+        - echo ${dependency.SPARK_OPERATOR_CHART_VERSION} > .bob/var.CHART_VERSION
+        - echo ${dependency.SPARK_OPERATOR_CHART_REPO_URL} > .bob/var.CHART_REPO
+    - rule: get_chart
+
+  download_eric_pm_server_chart:
+    - task: set_var 
+      cmd:
+        - echo ${dependency.ERIC_PM_SERVER_CHART_NAME} > .bob/var.CHART_NAME
+        - echo ${dependency.ERIC_PM_SERVER_CHART_VERSION} > .bob/var.CHART_VERSION
+        - echo ${dependency.ERIC_PM_SERVER_CHART_REPO_URL} > .bob/var.CHART_REPO
+    - rule: get_chart 
+
+  package_seldon_chart:
+    - task: set_var 
+      cmd:
+        - echo ${env.PWD}/helm-charts/${dependency.SELDON_CORE_CHART_NAME} > .bob/var.CHART_DIR
+        - echo "${env.TEMP_DIR}/${dependency.SELDON_CORE_CHART_NAME}-work" > .bob/var.WORK_DIR
+        - echo "${env.PWD}/.bob/packages/${dependency.SELDON_CORE_CHART_NAME}" > .bob/var.CHART_OUTPUT_DIR
+        - echo "${dependency.SELDON_CORE_CHART_VERSION}-mxe" > .bob/var.CHART_VERSION
+    - rule: package_chart 
+
+  push_seldon_core_chart:
+    - task: set_var 
+      cmd: 
+        - echo "${env.PWD}/.bob/packages/${dependency.SELDON_CORE_CHART_NAME}/${dependency.SELDON_CORE_CHART_NAME}-${dependency.SELDON_CORE_CHART_VERSION}-mxe.tgz" > .bob/var.CHART_PKG_PATH
+    - rule: push_chart
+
+  delete_seldon_core_chart:
+    - task: set_var
+      cmd: 
+        - echo "${env.MXE_CHART_REPO}-local/${dependency.SELDON_CORE_CHART_NAME}-${dependency.SELDON_CORE_CHART_VERSION}-mxe.tgz" > .bob/var.CHART_LOCATION_IN_REPO
+    - rule: delete_chart
+  
+  download_osmn_chart:
+    - task: set_var 
+      cmd:
+        - echo ${dependency.OSMN_CHART_NAME} > .bob/var.CHART_NAME
+        - echo ${dependency.OSMN_CHART_VERSION} > .bob/var.CHART_VERSION
+        - echo ${dependency.OSMN_CHART_REPO_URL} > .bob/var.CHART_REPO 
+    - rule: get_chart
+
+  package_osmn_chart:
+    - task: set_var 
+      cmd:
+        - echo ${env.PWD}/helm-charts/${dependency.OSMN_CHART_NAME} > .bob/var.CHART_DIR
+        - echo "${env.TEMP_DIR}/${dependency.OSMN_CHART_NAME}-work" > .bob/var.WORK_DIR
+        - echo "${env.PWD}/.bob/packages/${dependency.OSMN_CHART_NAME}" > .bob/var.CHART_OUTPUT_DIR
+        - echo "${dependency.OSMN_CHART_VERSION}-mxe" > .bob/var.CHART_VERSION
+    - rule: package_chart 
+
+  push_osmn_chart:
+    - task: set_var 
+      cmd: 
+        - echo "${env.PWD}/.bob/packages/${dependency.OSMN_CHART_NAME}/${dependency.OSMN_CHART_NAME}-${dependency.OSMN_CHART_VERSION}-mxe.tgz" > .bob/var.CHART_PKG_PATH
+    - rule: push_chart
+
+  delete_osmn_chart:
+    - task: set_var
+      cmd: 
+        - echo "${env.MXE_CHART_REPO}-local/${dependency.OSMN_CHART_NAME}-${dependency.OSMN_CHART_VERSION}-mxe.tgz" > .bob/var.CHART_LOCATION_IN_REPO
+    - rule: delete_chart
+
+  package_eric_pm_server_chart:
+    - task: set_var 
+      cmd:
+        - echo ${env.PWD}/helm-charts/${dependency.ERIC_PM_SERVER_CHART_NAME} > .bob/var.CHART_DIR
+        - echo "${env.TEMP_DIR}/${dependency.ERIC_PM_SERVER_CHART_NAME}-work" > .bob/var.WORK_DIR
+        - echo "${env.PWD}/.bob/packages/${dependency.ERIC_PM_SERVER_CHART_NAME}" > .bob/var.CHART_OUTPUT_DIR
+        - echo "${dependency.ERIC_PM_SERVER_CHART_VERSION}-mxe" > .bob/var.CHART_VERSION
+    - rule: package_chart 
+
+  push_eric_pm_server_chart:
+    - task: set_var 
+      cmd: 
+        - echo "${env.PWD}/.bob/packages/${dependency.ERIC_PM_SERVER_CHART_NAME}/${dependency.ERIC_PM_SERVER_CHART_NAME}-${dependency.ERIC_PM_SERVER_CHART_VERSION}-mxe.tgz" > .bob/var.CHART_PKG_PATH
+    - rule: push_chart
+
+  delete_eric_pm_server_chart:
+    - task: set_var
+      cmd: 
+        - echo "${env.MXE_CHART_REPO}-local/${dependency.ERIC_PM_SERVER_CHART_NAME}-${dependency.ERIC_PM_SERVER_CHART_VERSION}-mxe.tgz" > .bob/var.CHART_LOCATION_IN_REPO
+    - rule: delete_chart
+
+  download_all_charts:
+    - rule: download_seldon_chart
+
+  package_all_charts:
+    - rule: package_seldon_chart
+
+  push_all_charts:
+    - rule: push_seldon_core_chart
+  
+  delete_all_charts:
+    - rule: delete_seldon_core_chart
+

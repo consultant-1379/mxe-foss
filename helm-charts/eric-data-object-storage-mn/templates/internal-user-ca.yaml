@@ -1,0 +1,19 @@
+{{- $global := fromJson (include "eric-data-object-storage-mn.global" .) -}}
+{{- if $global.security.tls.enabled }}
+---
+apiVersion: siptls.sec.ericsson.com/v1
+kind: InternalUserCA
+metadata:
+  name: {{ template "eric-data-object-storage-mn.fullname" . }}-ca
+  annotations:
+    {{- include "eric-data-object-storage-mn.annotations" . | nindent 4 }}
+  labels:
+    {{- include "eric-data-object-storage-mn-mgt.labels" . | nindent 4 }}
+spec:
+  kubernetes:
+    generatedSecretName: {{ template "eric-data-object-storage-mn.fullname" . }}-client-ca-secret
+    certificateName: {{ template "eric-data-object-storage-mn.security.tls.caName" . }}
+  certificate:
+    subject:
+      cn: {{ template "eric-data-object-storage-mn.fullname" . }} CA
+{{- end }}

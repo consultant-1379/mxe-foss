@@ -1,0 +1,371 @@
+{{- $global := fromJson (include "eric-data-object-storage-mn.global" .) -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "eric-data-object-storage-mn.fullname" . }}-mgt
+  labels: {{- include "eric-data-object-storage-mn-mgt.labels" . | nindent 4 }}
+  annotations: {{- include "eric-data-object-storage-mn.annotations" . | nindent 4 }}
+spec:
+  strategy:
+    type: {{ .Values.updateStrategy.mgt.type | quote }}
+    rollingUpdate:
+      maxUnavailable: {{ .Values.updateStrategy.mgt.rollingUpdate.maxUnavailable }}
+      maxSurge: {{ .Values.updateStrategy.mgt.rollingUpdate.maxSurge }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ template "eric-data-object-storage-mn.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      role: management
+  template:
+    metadata:
+      labels:
+        {{- $brLabels := dict -}}
+        {{- if (.Values.brAgent).enabled }}
+          {{- $_ := set $brLabels .Values.brAgent.brLabelKey (.Values.brAgent.brLabelValue) -}}
+        {{- end -}}
+        {{- $commonLabels := include "eric-data-object-storage-mn-mgt.labels" . | fromYaml -}}
+        {{- include "eric-data-object-storage-mn.mergeLabels" (dict "location" .Template.Name "sources" (list $commonLabels $brLabels)) | trim | nindent 8 }}
+      annotations:
+        {{- $annotations := dict -}}
+        {{- $_ := set $annotations "checksum/config" (include (print $.Template.BasePath "/configmap.yaml") . | sha256sum) -}}
+        {{- $_ := set $annotations "backupType" (include "eric-data-object-storage-mn.backupTypes" .) -}}
+        {{- $commonAnnotations := include "eric-data-object-storage-mn.annotations" . | fromYaml -}}
+        {{- $apparmorAnn := include "eric-data-object-storage-mn.manager.appArmorAnnotations" . | fromYaml -}}
+        {{- $logshipperAppArmorAnn := include "eric-data-object-storage-mn.logshipper.appArmorAnnotations" . | fromYaml -}}
+        {{- $kmsconfigAppArmorAnn := include "eric-data-object-storage-mn.kms-config.appArmorAnnotations" . | fromYaml -}}
+        {{- $braAppArmorAnn := include "eric-data-object-storage-mn.eric-data-object-storage-mn-bra.appArmorAnnotations" . | fromYaml -}}
+        {{- if and .Values.autoEncryption.enabled $global.security.tls.enabled }}
+        {{- $apparmorAnn = merge $apparmorAnn $kmsconfigAppArmorAnn }}
+        {{- end }}
+        {{- if has "applicationLevel" $global.log.outputs }}
+        {{- $apparmorAnn = merge $apparmorAnn $logshipperAppArmorAnn }}
+        {{- include "eric-data-object-storage-mn.LsAppArmorProfileAnnotation" . | nindent 8 -}}
+        {{- end }}
+        {{- if (.Values.brAgent).enabled }}
+        {{- $apparmorAnn = merge $apparmorAnn $braAppArmorAnn }}
+        {{- end }}
+        {{- include "eric-data-object-storage-mn.mergeAnnotations" (dict "location" .Template.Name "sources" (list $commonAnnotations $annotations $apparmorAnn)) | trim | nindent 8 }}
+    spec:
+      {{- if .Values.podPriority.eric_data_object_storage_mn_mgt.priorityClassName }}
+      priorityClassName: {{ .Values.podPriority.eric_data_object_storage_mn_mgt.priorityClassName | quote}}
+      {{- end }}
+      securityContext:
+        fsGroup: {{ template "eric-data-object-storage-mn.fsGroup.coordinated" . }}
+      serviceAccountName: {{ include "eric-data-object-storage-mn.serviceAccountName" . | quote }}
+{{- if include "eric-data-object-storage-mn.pullSecrets" . }}
+      imagePullSecrets:
+        - name: {{ template "eric-data-object-storage-mn.pullSecrets" . }}
+{{- end }}
+{{- if and .Values.autoEncryption.enabled $global.security.tls.enabled }}
+      initContainers:
+        - name: kms-config
+          image: {{ template "eric-data-object-storage-mn-init.imagePath" . }}
+          imagePullPolicy: {{ .Values.imageCredentials.init.pullPolicy }}
+          {{- if has "applicationLevel" $global.log.outputs }}
+          command: ["/minio/init.sh", "kms"]
+          {{- else }}
+          command: ["/minio/kms.sh"]
+          {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - all
+            {{- include "eric-data-object-storage-mn.kms-config.seccompProfile" . | indent 12 }}
+          volumeMounts:
+          {{- if has "applicationLevel" $global.log.outputs }}
+          {{- include "eric-data-object-storage-mn.logshipper-storage-path" . | indent 12 }}
+          {{- end }}
+            - name: kms-tempdir
+              mountPath: /tmp
+            - name: kms-config
+              mountPath: /minio/config
+          resources:
+{{ toYaml .Values.resources.mgt | indent 12 }}
+{{- end }}
+      containers:
+    {{- if has "applicationLevel" $global.log.outputs }}
+    {{- include "eric-data-object-storage-mn.logshipper-container" . | indent 6 }}
+    {{- end }}
+      - name: manager
+        image: {{ template "eric-data-object-storage-mn-init.imagePath" . }}
+        imagePullPolicy: {{ .Values.imageCredentials.init.pullPolicy }}
+        {{- if has "applicationLevel" $global.log.outputs }}
+        command: [ "/minio/init.sh", "manager" ]
+        {{- else}}
+        command: ["/minio/manager.sh"]
+        {{- end }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          capabilities:
+            drop:
+              - all
+          {{- include "eric-data-object-storage-mn.manager.seccompProfile" . | indent 10 }}
+        volumeMounts:
+          - name: minio-tempdir
+            mountPath: /tmp
+        {{- if has "applicationLevel" $global.log.outputs }}
+        {{- include "eric-data-object-storage-mn.logshipper-storage-path" . | indent 10 }}
+        {{- end }}
+          - name: kms-config
+            mountPath: /minio/config
+          {{- if $global.security.tls.enabled }}
+          - name: trust-ca-chain
+            mountPath: /certs/ca
+            readOnly: false
+          {{ end }}
+          {{- if ne .Values.objects_lifecycle_cfg "" }}
+          - name: lifecycle-config
+            mountPath: /minio/lifecycle/config.sh
+            subPath: config.sh
+          {{ end }}
+        env:
+{{- if has "k8sLevel" $global.log.outputs }}
+          - name: LOG_INDIRECT_STREAM
+            value: "true"
+{{- end }}
+{{- if has "applicationLevel" $global.log.outputs }}
+          - name: LOG_DIRECT_STREAM
+            value: "true"
+{{- end }}
+          - name: MINIO_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.credentials.kubernetesSecretName }}
+                key: accesskey
+          - name: MINIO_SECRET_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.credentials.kubernetesSecretName }}
+                key: secretkey
+          - name: TZ
+            value: {{ $global.timezone | quote }}
+          {{- if eq .Values.mode "distributed" }}
+          - name: MINIO_REPLICAS
+            value: {{ .Values.replicas | quote }}
+          {{- else if eq .Values.mode "standalone" }}
+          - name: MINIO_REPLICAS
+            value: "1"
+          {{- end }}
+          - name: STORAGE_SERVER_DNS
+            value: {{ template "eric-data-object-storage-mn.fullname" . }}
+          - name: MC_HOST
+            value: {{ .Values.lifecycle.mcHost | quote }}
+          - name: TLS_ENABLED
+            value: {{ $global.security.tls.enabled | quote }}
+          {{- if $global.security.tls.enabled }}
+          - name: OBJECT_STORAGE_CAPATH
+            value: /certs/ca
+          {{- end }}
+        livenessProbe:
+          exec:
+            command:
+            - cat
+            - /minio/run/health
+          initialDelaySeconds: {{ .Values.probes.mgt.livenessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.probes.mgt.livenessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.probes.mgt.livenessProbe.timeoutSeconds }}
+          successThreshold: {{ .Values.probes.mgt.livenessProbe.successThreshold }}
+          failureThreshold: {{ .Values.probes.mgt.livenessProbe.failureThreshold }}
+        readinessProbe:
+          exec:
+            command:
+            - cat
+            - /minio/run/health
+          initialDelaySeconds: {{ .Values.probes.mgt.readinessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.probes.mgt.readinessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.probes.mgt.readinessProbe.timeoutSeconds }}
+          successThreshold: {{ .Values.probes.mgt.readinessProbe.successThreshold }}
+          failureThreshold: {{ .Values.probes.mgt.readinessProbe.failureThreshold }}
+        resources:
+{{ toYaml .Values.resources.mgt | indent 10 }}
+
+      {{- if .Values.brAgent.enabled }}
+      - name: {{ template "eric-data-object-storage-mn.fullname" . }}-bra
+        image: {{ template "eric-data-object-storage-mn-bra.imagePath" . }}
+        {{- if has "applicationLevel" $global.log.outputs }}
+        command: ["/minio/init.sh","bra"]
+        {{ else }}
+        command: ["/bin/sh","-c"]
+        args: [ "/usr/bin/java -Dlog4j.configurationFile=/etc/bra/log4j2.xml -jar /opt/agent.jar /etc/bra/application.properties" ]
+        {{- end }}
+        imagePullPolicy: {{ .Values.imageCredentials.bra.pullPolicy }}
+        env:
+{{- if has "k8sLevel" $global.log.outputs }}
+          - name: LOG_INDIRECT_STREAM
+            value: "true"
+{{- end }}
+{{- if has "applicationLevel" $global.log.outputs }}
+          - name: LOG_DIRECT_STREAM
+            value: "true"
+{{- end }}
+          - name: TZ
+            value: {{ $global.timezone | quote }}
+          - name: MINIO_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.credentials.kubernetesSecretName }}
+                key: accesskey
+          - name: MINIO_SECRET_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.credentials.kubernetesSecretName }}
+                key: secretkey
+          - name: LOG_LEVEL
+            value: {{ .Values.brAgent.logLevel }}
+          - name: DEFAULT_RETRY_TIMES
+            value: {{ .Values.brAgent.retryTimes | quote }}
+          {{- if $global.security.tls.enabled }}
+          - name: BRA_TLS_PATHS_INTERNAL_CA_BUNDLE
+            value: {{ .Values.brAgent.tls.paths.internalCa }}
+          {{- end }}
+        livenessProbe:
+          exec:
+            command:
+            - "pgrep"
+            - "-fl"
+            - "java"
+          initialDelaySeconds: {{ .Values.probes.brAgent.livenessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.probes.brAgent.livenessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.probes.brAgent.readinessProbe.timeoutSeconds }}
+          successThreshold: {{ .Values.probes.brAgent.livenessProbe.successThreshold }}
+          failureThreshold: {{ .Values.probes.brAgent.livenessProbe.failureThreshold }}
+        readinessProbe:
+          exec:
+            command:
+            - "pgrep"
+            - "-fl"
+            - "java"
+          initialDelaySeconds: {{ .Values.probes.brAgent.readinessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.probes.brAgent.readinessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.probes.brAgent.readinessProbe.timeoutSeconds }}
+          successThreshold: {{ .Values.probes.brAgent.readinessProbe.successThreshold }}
+          failureThreshold: {{ .Values.probes.brAgent.readinessProbe.failureThreshold }}
+        resources:
+{{ toYaml .Values.resources.brAgent | indent 10 }}
+        volumeMounts:
+        {{- if has "applicationLevel" $global.log.outputs }}
+        {{- include "eric-data-object-storage-mn.logshipper-storage-path" . | indent 10 }}
+        {{- end }}
+          - name: tempdir
+            mountPath: /tmp
+          - name: tempdir-backup
+            mountPath: /data/backup
+          - name: tempdir-restore
+            mountPath: /data/restore
+          - name: bragent-properties
+            mountPath: /etc/bra/application.properties
+            subPath: application.properties
+            readOnly: true
+          - name: bragent-logging
+            mountPath: /etc/bra/log4j2.xml
+            subPath: log4j2.xml
+            readOnly: true
+          {{- if $global.security.tls.enabled }}
+          - name: trust-ca-chain
+            mountPath: /certs/ca
+            readOnly: false
+          - name: internal-ca
+            mountPath: {{ .Values.brAgent.tls.paths.internalCa }}
+            readOnly: true
+          - name: client-certificates
+            mountPath: {{ .Values.brAgent.tls.paths.clientCerts }}
+            readOnly: true
+          {{- end }}
+        securityContext:
+          privileged: false
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          capabilities:
+            drop:
+              - all
+          {{- include "eric-data-object-storage-mn.eric-data-object-storage-mn-bra.seccompProfile" . | indent 10 }}
+      {{- end }}
+
+      volumes:
+        - name: minio-tempdir
+          emptyDir:
+            sizeLimit: "10Mi"
+            medium: "Memory"
+        - name: kms-tempdir
+          emptyDir:
+            sizeLimit: "10Mi"
+            medium: "Memory"
+      {{- if has "applicationLevel" $global.log.outputs }}
+      {{- include "eric-data-object-storage-mn.logshipper-volume" . | indent 8 }}
+      {{- end }}
+        - name: kms-config
+          configMap:
+            defaultMode: 0755
+            name: {{ template "eric-data-object-storage-mn.fullname" . }}-kms-config
+        {{- if $global.security.tls.enabled }}
+        - name: trust-ca-chain
+          secret:
+            secretName: {{ .Values.tls.caSecret | quote }}
+            defaultMode: 0640
+            items:
+            - key: {{ .Values.tls.caCert | quote }}
+              path: root_ca.pem
+        {{ end }}
+        {{- if ne .Values.objects_lifecycle_cfg "" }}
+        - name: lifecycle-config
+          configMap:
+            name: {{ template "eric-data-object-storage-mn.fullname" . }}-{{ .Values.lifecycle.configMap }}
+            defaultMode: 0777
+            items:
+            - key: lifecycle-config.cfg
+              path: config.sh
+        {{ end }}
+        {{- if .Values.brAgent.enabled }}
+        {{- if $global.security.tls.enabled }}
+        - name: internal-ca
+          secret:
+            secretName: eric-sec-sip-tls-trusted-root-cert
+            defaultMode: 0640
+        - name: client-certificates
+          secret:
+            secretName: {{ template "eric-data-object-storage-mn.fullname" . }}-bra-cert
+            defaultMode: 0640
+        {{- end }}
+        - name: tempdir
+          emptyDir:
+            medium: Memory
+
+        - name: bragent-properties
+          configMap:
+            defaultMode: 0444
+            name: {{ template "eric-data-object-storage-mn.fullname" . }}-bragent-properties
+        - name: tempdir-backup
+          emptyDir: {}
+        - name: tempdir-restore
+          emptyDir: {}
+        - name: bragent-logging
+          configMap:
+            defaultMode: 0444
+            name: {{ template "eric-data-object-storage-mn.fullname" . }}-bragent-logging
+        {{- end }}
+
+      {{- if or .Values.nodeSelector $global.nodeSelector }}
+      nodeSelector:
+        {{- include "eric-data-object-storage-mn.nodeSelector" . | nindent 8 }}
+      {{- end }}
+
+      {{ if .Values.tolerations -}}
+      tolerations:
+        {{- toYaml .Values.tolerations | trim | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds.mgt }}
+      {{if .Values.topologySpreadConstraints.mgt -}}
+      topologySpreadConstraints:
+        {{- toYaml .Values.topologySpreadConstraints.mgt | trim | nindent 8 }}
+      {{- end }}
+
+

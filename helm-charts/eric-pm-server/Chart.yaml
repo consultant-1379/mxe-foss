@@ -1,0 +1,11 @@
+---
+apiVersion: v1
+appVersion: "2.1.0"
+description: A Helm chart for the ADP Performance Management(PM) Server
+maintainers:
+- email: PDLAMSDEVE@pdl.internal.ericsson.com
+  name: Team Challenger
+name: eric-pm-server
+sources:
+- https://gerrit.ericsson.se/plugins/gitiles/adp-gs/adp-gs-pm
+version: 10.5.0+45.mxe

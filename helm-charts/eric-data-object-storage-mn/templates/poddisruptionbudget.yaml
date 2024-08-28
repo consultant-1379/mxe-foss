@@ -1,0 +1,35 @@
+# For Statefulset
+{{- if .Capabilities.APIVersions.Has "policy/v1/PodDisruptionBudget" }}
+apiVersion: policy/v1
+{{- else }}
+apiVersion: policy/v1beta1
+{{- end }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ template "eric-data-object-storage-mn.fullname" . }}-pdb
+  labels: {{- include "eric-data-object-storage-mn.labels" . | nindent 4 }}
+  annotations: {{- include "eric-data-object-storage-mn.annotations" . | nindent 4 }}
+spec:
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  selector:
+    matchLabels:
+      app: {{ template "eric-data-object-storage-mn.fullname" . }}
+      release: {{ .Release.Name }}
+---
+# For Deployment
+{{- if .Capabilities.APIVersions.Has "policy/v1/PodDisruptionBudget" }}
+apiVersion: policy/v1
+{{- else }}
+apiVersion: policy/v1beta1
+{{- end }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ template "eric-data-object-storage-mn.fullname" . }}-mgt-pdb
+  labels: {{- include "eric-data-object-storage-mn.labels" . | nindent 4 }}
+  annotations: {{- include "eric-data-object-storage-mn.annotations" . | nindent 4 }}
+spec:
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  selector:
+    matchLabels:
+      app: {{ template "eric-data-object-storage-mn.fullname" . }}-mgt
+      release: {{ .Release.Name }}

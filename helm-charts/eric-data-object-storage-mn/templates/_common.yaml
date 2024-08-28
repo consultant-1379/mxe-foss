@@ -1,0 +1,99 @@
+{{/*
+Ericsson Product Information Helm Annotations
+*/}}
+{{- define "eric-data-object-storage-mn.helm-annotations" -}}
+ericsson.com/product-name: "Object Storage MN Helm Chart"
+ericsson.com/product-number: "CXC 174 2822"
+ericsson.com/product-revision: {{ regexReplaceAll "(.*)[+].*" .Chart.Version "${1}"  }}
+{{- end -}}
+
+{{/*
+Merged annotations containing builtins and user-defined annotations (DR-D1121-065)
+*/}}
+{{- define "eric-data-object-storage-mn.annotations" -}}
+  {{- $global := (.Values.global).annotations -}}
+  {{- $service := .Values.annotations -}}
+  {{- $helm := include "eric-data-object-storage-mn.helm-annotations" . | fromYaml -}}
+  {{- include "eric-data-object-storage-mn.mergeAnnotations" (dict "location" (.Template.Name) "sources" (list $helm $service $global)) | trim -}}
+{{- end -}}
+
+{{/*
+Ericsson Product Information for Log Shipper sidecar
+*/}}
+{{- define "eric-data-object-storage-mn.product-info" }}
+ericsson.com/product-name: "Object Storage MN Helm Chart"
+ericsson.com/product-number: "CXC 174 2822"
+ericsson.com/product-revision: {{ regexReplaceAll "(.*)[+].*" .Chart.Version "${1}"  }}
+{{- end }}
+
+{{- define "eric-data-object-storage-mn.service-annotations" -}}
+  {{- $commonAnnotations := (include "eric-data-object-storage-mn.annotations" . | fromYaml) -}}
+  {{- $serviceAnnotations := dict -}}
+  {{- $global := fromJson (include "eric-data-object-storage-mn.global" .) -}}
+  {{- if $global.security.tls.enabled }}
+    {{- $_ := set $serviceAnnotations "prometheus.io/scheme" "https" -}}
+  {{- end -}}
+  {{- include "eric-data-object-storage-mn.mergeAnnotations" (dict "location" .Template.Name "sources" (list $commonAnnotations $serviceAnnotations)) | trim }}
+{{- end -}}
+
+{{- define "eric-data-object-storage-mn.metrics-annotations" -}}
+  {{- $serviceAnnotations := (include "eric-data-object-storage-mn.service-annotations" . | fromYaml) -}}
+  {{- $metricsAnnotations := dict -}}
+  {{- $_ := set $metricsAnnotations "prometheus.io/scrape" "true" -}}
+  {{- $_ := set $metricsAnnotations "prometheus.io/port" "9000" -}}
+  {{- $_ := set $metricsAnnotations "prometheus.io/path" "/minio/prometheus/metrics" -}}
+  {{- include "eric-data-object-storage-mn.mergeAnnotations" (dict "location" .Template.Name "sources" (list $serviceAnnotations $metricsAnnotations)) | trim }}
+{{- end -}}
+
+{{/*
+Logshipper annotations
+*/}}
+{{- define "eric-data-object-storage-mn.logshipper-annotations" }}
+{{- include "eric-data-object-storage-mn.annotations" . -}}
+{{- end }}
+
+{{/*
+Ericsson Product Information Helm Labels
+*/}}
+{{- define "eric-data-object-storage-mn.helm-labels" -}}
+app.kubernetes.io/name: {{ include "eric-data-object-storage-mn.name" . | quote }}
+app.kubernetes.io/version: {{ include "eric-data-object-storage-mn.version" . | quote }}
+app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+app.kubernetes.io/instance: {{ .Release.Name | quote }}
+helm.sh/chart: {{ include "eric-data-object-storage-mn.chart" . | quote }}
+app: {{ include "eric-data-object-storage-mn.name" . }}
+chart: {{ include "eric-data-object-storage-mn.chart" . | quote }}
+release: {{ .Release.Name | quote }}
+heritage: {{ .Release.Service | quote }}
+{{- end -}}
+
+{{/*
+Merged labels containing builtins and user-defined labels (DR-D1121-060)
+*/}}
+{{- define "eric-data-object-storage-mn.labels" -}}
+  {{- $global := (.Values.global).labels -}}
+  {{- $service := .Values.labels -}}
+  {{- $helm := include "eric-data-object-storage-mn.helm-labels" . | fromYaml -}}
+  {{- include "eric-data-object-storage-mn.mergeLabels" (dict "location" (.Template.Name) "sources" (list $helm $service $global)) | trim -}}
+{{- end -}}
+
+{{/*
+Merged labels containing builtins and user-defined labels (DR-D1121-060)
+*/}}
+{{- define "eric-data-object-storage-mn-mgt.labels" -}}
+  {{- $global := (.Values.global).labels -}}
+  {{- $service := .Values.labels -}}
+  {{- $mgtLabels := dict -}}
+  {{- $_ := set $mgtLabels "app" (printf "%s-mgt" (include "eric-data-object-storage-mn.name" .)) -}}
+  {{- $_ := set $mgtLabels "role" "management" -}}
+  {{- $helm := include "eric-data-object-storage-mn.helm-labels" . | fromYaml -}}
+  {{- $_ := unset $helm "app" -}}
+  {{- include "eric-data-object-storage-mn.mergeLabels" (dict "location" (.Template.Name) "sources" (list $helm $mgtLabels $service $global)) | trim -}}
+{{- end -}}
+
+{{/*
+Logshipper labels
+*/}}
+{{- define "eric-data-object-storage-mn.logshipper-labels" }}
+{{- include "eric-data-object-storage-mn.labels" . -}}
+{{- end }}

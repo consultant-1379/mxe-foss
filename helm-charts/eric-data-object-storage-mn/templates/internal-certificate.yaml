@@ -1,0 +1,46 @@
+{{- $global := fromJson (include "eric-data-object-storage-mn.global" .) -}}
+{{- if and $global.security.tls.enabled (not .Values.tls.certSecret) }}
+apiVersion: siptls.sec.ericsson.com/v1
+kind: InternalCertificate
+metadata:
+  name: {{ template "eric-data-object-storage-mn.fullname" . }}-cert
+  labels:
+    {{- include "eric-data-object-storage-mn.labels" . | nindent 4 }}
+  annotations:
+    {{- include "eric-data-object-storage-mn.annotations" . | nindent 4 }}
+spec:
+  kubernetes:
+    # The secret name where SIP-TLS is storing our certificate
+    generatedSecretName: {{ template "eric-data-object-storage-mn.fullname" . }}-cert
+    certificateName: srvcert.pem
+    privateKeyName: srvprivkey.pem
+  certificate:
+    subject:
+      # The common name (and the derived SANs) populated in the certificate
+      cn: {{ template "eric-data-object-storage-mn.fullname" . }}
+    subjectAlternativeName:
+      # Optional
+      # List of additonal DNS names to populate into subject alt name field
+      # By default, the following SANs are pre-populated:
+      # - DNS:<common-name>
+      # - DNS:<common-name>.<namespace>,
+      # - DNS:<common-name>.<namespace>.svc,
+      # - DNS:<common-name>.<namespace>.svc.<cluster-domain>
+      dns:
+        - "certified-scrape-target"
+        - "*.{{ template "eric-data-object-storage-mn.fullname" . }}-svc"
+        - "*.{{ template "eric-data-object-storage-mn.fullname" . }}-svc.{{ .Release.Namespace }}"
+        - "*.{{ template "eric-data-object-storage-mn.fullname" . }}-svc.{{ .Release.Namespace }}.svc"
+        - "*.{{ template "eric-data-object-storage-mn.fullname" . }}-svc.{{ .Release.Namespace }}.svc.{{ .Values.clusterDomain }}"
+    validity:
+      # The time to live of the certificate (in seconds). We override the default certificate
+      # time-to-live in order to avoid deadlock when cluster is down. Since SIP-TLS
+      # is dependent on KMS, if the KMS certificate expires then SIP-TLS can no longer
+      # provision certificates. It would require manual intervention.
+      # Set to one week default.
+      # The value of `override-ttl` must be greater than or equal to 1 day(86400).
+      overrideTtl: 604800
+    extendedKeyUsage:
+      tlsClientAuth: false
+      tlsServerAuth: true
+{{- end }}

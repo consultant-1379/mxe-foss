@@ -1,0 +1,25 @@
+{{- $g := fromJson (include "eric-pm-server.global" .) -}}
+{{- if $g -}}
+  {{- if $g.security -}}
+    {{- if $g.security.policyBinding -}}
+      {{- if $g.security.policyBinding.create -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ template "eric-pm-server.name" . }}-security-policy
+  annotations:
+    {{- $securityPolicyAnn := include "eric-pm-server.securityPolicy.annotations" . | fromYaml -}}
+    {{- $commonAnn := include "eric-pm-server.annotations" . | fromYaml -}}
+    {{- include "eric-pm-server.mergeAnnotations" (dict "location" .Template.Name "sources" (list $securityPolicyAnn $commonAnn)) | trim | nindent 4 }}
+  labels: {{- include "eric-pm-server.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "eric-pm-server.securityPolicy.reference" . }}
+subjects:
+- kind: ServiceAccount
+  name: {{ template "eric-pm-server.name" . }}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}

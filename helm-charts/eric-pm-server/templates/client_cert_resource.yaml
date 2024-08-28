@@ -1,0 +1,85 @@
+{{- $g := fromJson (include "eric-pm-server.global" .) -}}
+{{- if $g.security.tls.enabled }}
+apiVersion: siptls.sec.ericsson.com/v1
+kind: InternalCertificate
+metadata:
+  name: {{ template "eric-pm-server.name" . }}-client-cert
+  annotations: {{- include "eric-pm-server.annotations" . | nindent 4 }}
+  labels: {{- include "eric-pm-server.labels" . | nindent 4 }}
+spec:
+
+  kubernetes:
+    ## Mandatory; string.
+    ## The secret where the certificate and key are stored.
+    ## The same secret should not be used for multiple purposes, as SIP-TLS
+    ## overwrites the content periodically.
+    generatedSecretName: {{ template "eric-pm-server.name" . }}-client-cert
+
+    ## Optional; string.
+    ## The key name of the certificate in the secret.
+    ## If not given, 'cert.pem' is used.
+    certificateName: 'clicert.pem'
+
+    ## Optional; string.
+    ## The key name of the private key in the secret.
+    ## If not given, 'key.pem' is used.
+    privateKeyName: 'cliprivkey.pem'
+
+    ## Optional; string
+    ## Values either pkcs1 or pkcs8. If not given, pkcs1 is used
+    #privateKeyFormat:
+
+  certificate:
+    subject:
+      ## Mandatory; string.
+      ## The Subject Common Name (CN) of the certificate.
+      ## This typically corresponds to the domain name of the service or a client identifier.
+      cn: {{ template "eric-pm-server.name" . }}
+
+    #validity:
+      ## Optional; integer.
+      ## The time (given in seconds) that the certificate is valid.
+      ## If not specified, the time to live configured in SIP-TLS is used.
+      #overrideTtl:
+
+      ## Optional; integer.
+      ## The lead time (given in seconds) before certificate is renewed. This is an absolute
+      ## value. If not given, the lead time is calculated from the renewalThreshold and the
+      ## time to live configured in SIP-TLS. Lead time must be smaller than the certificate
+      ## validity time.
+      #overrideLeadTime:
+
+    issuer:
+      ## Optional; string.
+      ## The identifier for the Issuer CA. Decides from which CA to request the certificate.
+      ## It must be the same as the InternalUserCA custom resource metadata.name field.
+      ## If left empty, the certificate is issued by SIP-TLS intermediate CA which is part of
+      ## the SIP-TLS trusted root CA chain.
+      reference: {{ template "eric-pm-server.name" . }}-ca
+
+    #subjectAlternativeName:
+      ## Optional; boolean, default true.
+      ## Whether to populate the Subject Alt Name with fully qualified DNS names of the cluster.
+      ## If true, the following DNS are populated:
+      ## <common-name>.<namespace>
+      ## <common-name>.<namespace>.svc
+      ## <common-name>.<namespace>.svc.<cluster-domain>
+      ##
+      ## The common name from 'spec.certificate.subject.cn' is always automatically populated, no matter what.
+      #populateKubernetesDns:
+
+      ## Optional; sequence consisting of strings.
+      ## List of additional DNS to populate into Subject Alt Name.
+      #dns:
+        #- my.example.dns
+        #- my.example.dns.two
+
+    extendedKeyUsage:
+      ## Mandatory; boolean
+      ## Whether 'TLS Web Client Authentication' is set.
+      tlsClientAuth: true
+      ## Mandatory; boolean
+      ## Whether 'TLS Web Server Authentication' is set.
+      tlsServerAuth: false
+
+{{- end }}

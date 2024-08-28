@@ -1,0 +1,9 @@
+apiVersion: v1
+appVersion: 1.26.0-24
+description: Ericsson S3 compliance Object Storage Helm chart
+keywords:
+- storage
+- object-storage
+- eric-data-object-storage-mn
+name: eric-data-object-storage-mn
+version: 1.26.0+24

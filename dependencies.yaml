@@ -1,0 +1,18 @@
+modelVersion: 2.0
+properties:
+  - SELDON_CORE_CHART_NAME: seldon-core-operator
+  - SELDON_CORE_CHART_VERSION: 1.12.0 
+  - SELDON_CORE_CHART_REPO_URL:  https://storage.googleapis.com/seldon-charts
+# spark operator is not customised currently for EKS. Might be customised in future
+  - SPARK_OPERATOR_CHART_NAME: spark-operator
+  - SPARK_OPERATOR_CHART_VERSION: 1.1.19
+  - SPARK_OPERATOR_CHART_REPO_URL: https://googlecloudplatform.github.io/spark-on-k8s-operator
+# PM Server Customization
+  - ERIC_PM_SERVER_CHART_NAME: eric-pm-server
+  - ERIC_PM_SERVER_CHART_VERSION: 10.5.0+45
+  - ERIC_PM_SERVER_CHART_REPO_URL: https://arm.sero.gic.ericsson.se/artifactory/proj-adp-gs-all-helm/
+  
+# OSMN customisation for encrypting data at rest
+  - OSMN_CHART_NAME: eric-data-object-storage-mn
+  - OSMN_CHART_VERSION: 1.26.0+24 
+  - OSMN_CHART_REPO_URL: https://arm.sero.gic.ericsson.se/artifactory/proj-adp-eric-data-object-storage-mn-released-helm/

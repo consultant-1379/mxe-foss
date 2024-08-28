@@ -1,0 +1,49 @@
+{{- $global := fromJson (include "eric-data-object-storage-mn.global" .) -}}
+{{- if and .Values.brAgent.enabled $global.security.tls.enabled }}
+---
+apiVersion: siptls.sec.ericsson.com/v1
+kind: InternalCertificate
+metadata:
+  name: {{ template "eric-data-object-storage-mn.fullname" . }}-server-certificate
+  annotations: {{- include "eric-data-object-storage-mn.annotations" . | nindent 4 }}
+  labels: {{- include "eric-data-object-storage-mn-mgt.labels" . | nindent 4 }}
+spec:
+  kubernetes:
+    generatedSecretName: {{ template "eric-data-object-storage-mn.fullname" . }}-server-secret
+    certificateName: {{ template "eric-data-object-storage-mn.security.tls.certName" . }}
+    privateKeyName: {{ template "eric-data-object-storage-mn.security.tls.keyName" . }}
+  certificate:
+    subject:
+      cn: {{ template "eric-data-object-storage-mn.fullname" . }}
+    subjectAlternativeName:
+      dns:
+        - "localhost"
+        - certified-scrape-target
+    extendedKeyUsage:
+      tlsClientAuth: false
+      tlsServerAuth: true
+---
+apiVersion: siptls.sec.ericsson.com/v1
+kind: InternalCertificate
+metadata:
+  name: {{ template "eric-data-object-storage-mn.fullname" . }}-bra-cert
+  labels:
+    {{- include "eric-data-object-storage-mn-mgt.labels" . | nindent 4 }}
+  annotations:
+    {{- include "eric-data-object-storage-mn.annotations" . | nindent 4 }}
+spec:
+  kubernetes:
+    generatedSecretName: {{ template "eric-data-object-storage-mn.fullname" . }}-bra-cert
+    certificateName: {{ .Values.brAgent.tls.certName | quote }}
+    privateKeyName: {{ .Values.brAgent.tls.keyName | quote }}
+  certificate:
+    issuer:
+      reference: {{ default "eric-ctrl-bro-ca" .Values.brAgent.tls.issuerReference }}
+    subject:
+      cn: {{ template "eric-data-object-storage-mn.fullname" . }}
+    extendedKeyUsage:
+      tlsClientAuth: true
+      tlsServerAuth: false
+{{- end }}
+
+
